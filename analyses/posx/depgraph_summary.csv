@@ -1,0 +1,27 @@
+repo,total_modules,total_dependencies,circular_count,orphan_count,top_in_degree_module,top_in_degree,skipped_reason
+posx-comet-admin,3713,4636,0,50,../../../../../components/modals,113,
+posx-comet-backend,1278,2182,0,18,../../../modules/rbac,16,
+posx-comet-store,0,0,0,0,,0,no node_modules (npm install failed)
+posx-demo-admin,3500,4351,0,46,../../../../../components/modals,107,
+posx-demo-backend,843,1373,0,11,./build-summary,5,
+posx-demo-store,0,0,0,0,,0,no node_modules (npm install failed)
+posx-eume-admin,3571,4421,0,48,../../../../../components/modals,107,
+posx-eume-backend,1288,2209,0,18,./build-summary,6,
+posx-eume-store,0,0,0,0,,0,no node_modules (npm install failed)
+posx-frido-admin,3789,4700,0,54,../../../../../components/modals,111,
+posx-frido-b2b-admin,3594,4443,0,49,../../../components/modals,108,
+posx-frido-b2b-backend,971,1383,0,71,./build-summary,6,
+posx-frido-b2b-store,0,0,0,0,,0,no node_modules (npm install failed)
+posx-frido-backend,1385,2274,0,30,./build-summary,5,
+posx-frido-mobility-admin,3613,4491,0,48,../../../../../components/modals,109,
+posx-frido-mobility-backend,1047,1638,0,23,./build-summary,5,
+posx-frido-mobility-store,0,0,0,0,,0,no node_modules (npm install failed)
+posx-frido-store,0,0,0,0,,0,no node_modules (npm install failed)
+posx-kb,139,53,0,3,./db,3,
+posx-mokobara-admin,3940,4941,0,58,../../../../../components/modals,117,
+posx-mokobara-backend,1335,3094,32,34,,0,
+posx-mokobara-clearance-backend,921,1479,0,20,./service,8,
+posx-mokobara-store,963,1824,0,30,./schema,21,
+posx-ugaoo-admin,3762,4707,0,54,../../../components/modals,111,
+posx-ugaoo-backend,1568,3066,0,35,./validators,12,
+posx-ugaoo-store,863,1522,0,25,./schema,20,

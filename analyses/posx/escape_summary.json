@@ -1,0 +1,165 @@
+{
+  "per_repo_fix_commit_stats": {
+    "posx-comet-admin": {
+      "total_fix_commits": 36,
+      "pure_addition_or_unattributed_fixes": 0,
+      "unattributed_hunks": 0,
+      "escapes_found": 164
+    },
+    "posx-comet-backend": {
+      "total_fix_commits": 250,
+      "pure_addition_or_unattributed_fixes": 28,
+      "unattributed_hunks": 0,
+      "escapes_found": 801
+    },
+    "posx-comet-store": {
+      "total_fix_commits": 211,
+      "pure_addition_or_unattributed_fixes": 9,
+      "unattributed_hunks": 0,
+      "escapes_found": 917
+    },
+    "posx-demo-admin": {
+      "total_fix_commits": 2,
+      "pure_addition_or_unattributed_fixes": 1,
+      "unattributed_hunks": 0,
+      "escapes_found": 1
+    },
+    "posx-demo-backend": {
+      "total_fix_commits": 8,
+      "pure_addition_or_unattributed_fixes": 1,
+      "unattributed_hunks": 0,
+      "escapes_found": 7
+    },
+    "posx-demo-store": {
+      "total_fix_commits": 0,
+      "pure_addition_or_unattributed_fixes": 0,
+      "unattributed_hunks": 0,
+      "escapes_found": 0
+    },
+    "posx-eume-admin": {
+      "total_fix_commits": 16,
+      "pure_addition_or_unattributed_fixes": 0,
+      "unattributed_hunks": 0,
+      "escapes_found": 41
+    },
+    "posx-eume-backend": {
+      "total_fix_commits": 128,
+      "pure_addition_or_unattributed_fixes": 8,
+      "unattributed_hunks": 0,
+      "escapes_found": 361
+    },
+    "posx-eume-store": {
+      "total_fix_commits": 54,
+      "pure_addition_or_unattributed_fixes": 5,
+      "unattributed_hunks": 0,
+      "escapes_found": 235
+    },
+    "posx-frido-admin": {
+      "total_fix_commits": 20,
+      "pure_addition_or_unattributed_fixes": 3,
+      "unattributed_hunks": 0,
+      "escapes_found": 41
+    },
+    "posx-frido-b2b-admin": {
+      "total_fix_commits": 14,
+      "pure_addition_or_unattributed_fixes": 1,
+      "unattributed_hunks": 0,
+      "escapes_found": 30
+    },
+    "posx-frido-b2b-backend": {
+      "total_fix_commits": 9,
+      "pure_addition_or_unattributed_fixes": 1,
+      "unattributed_hunks": 0,
+      "escapes_found": 23
+    },
+    "posx-frido-b2b-store": {
+      "total_fix_commits": 4,
+      "pure_addition_or_unattributed_fixes": 0,
+      "unattributed_hunks": 0,
+      "escapes_found": 25
+    },
+    "posx-frido-backend": {
+      "total_fix_commits": 154,
+      "pure_addition_or_unattributed_fixes": 10,
+      "unattributed_hunks": 0,
+      "escapes_found": 666
+    },
+    "posx-frido-mobility-admin": {
+      "total_fix_commits": 0,
+      "pure_addition_or_unattributed_fixes": 0,
+      "unattributed_hunks": 0,
+      "escapes_found": 0
+    },
+    "posx-frido-mobility-backend": {
+      "total_fix_commits": 16,
+      "pure_addition_or_unattributed_fixes": 1,
+      "unattributed_hunks": 0,
+      "escapes_found": 31
+    },
+    "posx-frido-mobility-store": {
+      "total_fix_commits": 3,
+      "pure_addition_or_unattributed_fixes": 0,
+      "unattributed_hunks": 0,
+      "escapes_found": 5
+    },
+    "posx-frido-store": {
+      "total_fix_commits": 52,
+      "pure_addition_or_unattributed_fixes": 5,
+      "unattributed_hunks": 0,
+      "escapes_found": 196
+    },
+    "posx-kb": {
+      "total_fix_commits": 0,
+      "pure_addition_or_unattributed_fixes": 0,
+      "unattributed_hunks": 0,
+      "escapes_found": 0
+    },
+    "posx-mokobara-admin": {
+      "total_fix_commits": 73,
+      "pure_addition_or_unattributed_fixes": 4,
+      "unattributed_hunks": 0,
+      "escapes_found": 267
+    },
+    "posx-mokobara-backend": {
+      "total_fix_commits": 268,
+      "pure_addition_or_unattributed_fixes": 20,
+      "unattributed_hunks": 0,
+      "escapes_found": 979
+    },
+    "posx-mokobara-clearance-backend": {
+      "total_fix_commits": 12,
+      "pure_addition_or_unattributed_fixes": 2,
+      "unattributed_hunks": 0,
+      "escapes_found": 23
+    },
+    "posx-mokobara-store": {
+      "total_fix_commits": 223,
+      "pure_addition_or_unattributed_fixes": 12,
+      "unattributed_hunks": 0,
+      "escapes_found": 740
+    },
+    "posx-ugaoo-admin": {
+      "total_fix_commits": 39,
+      "pure_addition_or_unattributed_fixes": 5,
+      "unattributed_hunks": 0,
+      "escapes_found": 91
+    },
+    "posx-ugaoo-backend": {
+      "total_fix_commits": 137,
+      "pure_addition_or_unattributed_fixes": 16,
+      "unattributed_hunks": 0,
+      "escapes_found": 353
+    },
+    "posx-ugaoo-store": {
+      "total_fix_commits": 80,
+      "pure_addition_or_unattributed_fixes": 4,
+      "unattributed_hunks": 0,
+      "escapes_found": 336
+    }
+  },
+  "total_escapes_attributed": 6333,
+  "latency_days_median": 22,
+  "latency_days_p90": 242,
+  "latency_days_p10": 0,
+  "window_days": 365
+}

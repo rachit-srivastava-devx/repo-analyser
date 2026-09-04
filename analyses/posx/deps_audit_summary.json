@@ -1,0 +1,32 @@
+{
+  "total_cve_findings": 2636,
+  "cve_by_severity": {
+    "low": 225,
+    "medium": 1107,
+    "high": 1241,
+    "critical": 63
+  },
+  "repos_with_cves": 18,
+  "repos_with_cves_list": [
+    "posx-demo-backend",
+    "posx-comet-backend",
+    "posx-ugaoo-backend",
+    "posx-frido-b2b-backend",
+    "posx-frido-mobility-backend",
+    "posx-frido-backend",
+    "posx-ugaoo-admin",
+    "posx-mokobara-store",
+    "posx-ugaoo-store",
+    "posx-frido-admin",
+    "posx-frido-b2b-admin",
+    "posx-mokobara-admin",
+    "posx-comet-admin",
+    "posx-demo-admin",
+    "posx-frido-mobility-admin",
+    "posx-mokobara-backend",
+    "posx-mokobara-clearance-backend",
+    "posx-kb"
+  ],
+  "total_outdated_packages": 772,
+  "outdated_major_version_behind": 419
+}

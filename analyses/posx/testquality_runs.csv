@@ -1,0 +1,27 @@
+repo,script_used,ran,exit_code,runner_detected,tests_passed,tests_failed,tests_total,duration_s,skip_reason,node_version_used,failure_mode
+posx-comet-admin,test,True,0,vitest,1,0,1,4.9,,v20.20.2,
+posx-comet-backend,test:unit,True,1,jest,3,3,6,2.9,,v20.20.2,
+posx-comet-store,,False,-1,,0,0,0,0.0,no unit-test script in package.json,,
+posx-demo-admin,test,True,1,vitest,0,1,1,6.8,,v20.20.2,
+posx-demo-backend,test:unit,True,1,jest,0,0,0,4.2,,v20.20.2,"jest ran, testMatch pattern matched zero files -- test infra exists, no tests written"
+posx-demo-store,,False,-1,,0,0,0,0.0,no unit-test script in package.json,,
+posx-eume-admin,test,True,1,vitest,0,1,1,4.3,,v20.20.2,
+posx-eume-backend,test:unit,True,1,jest,169,10,179,8.7,,v20.20.2,
+posx-eume-store,,False,-1,,0,0,0,0.0,no unit-test script in package.json,,
+posx-frido-admin,test,True,1,vitest,17,1,18,7.1,,v20.20.2,
+posx-frido-b2b-admin,test,True,0,vitest,1,0,1,6.7,,v20.20.2,
+posx-frido-b2b-backend,test:unit,True,1,jest,0,0,0,2.6,,v20.20.2,"jest config validation error -- suite never started, see raw log"
+posx-frido-b2b-store,,False,-1,,0,0,0,0.0,no unit-test script in package.json,,
+posx-frido-backend,test:unit,True,0,jest,36,0,36,5.6,,v20.20.2,
+posx-frido-mobility-admin,test,True,1,vitest,0,1,1,6.7,,v20.20.2,
+posx-frido-mobility-backend,test:unit,True,1,jest,0,0,0,4.6,,v20.20.2,"jest ran, testMatch pattern matched zero files -- test infra exists, no tests written"
+posx-frido-mobility-store,,False,-1,,0,0,0,0.0,no unit-test script in package.json,,
+posx-frido-store,,False,-1,,0,0,0,0.0,no unit-test script in package.json,,
+posx-kb,,False,-1,,0,0,0,0.0,no unit-test script in package.json,,
+posx-mokobara-admin,test,True,1,vitest,0,1,1,12.4,,v20.20.2,
+posx-mokobara-backend,test:unit,True,0,jest,162,0,162,16.8,,v20.20.2,
+posx-mokobara-clearance-backend,test:unit,True,1,jest,0,0,0,5.5,,v20.20.2,"jest ran, testMatch pattern matched zero files -- test infra exists, no tests written"
+posx-mokobara-store,,False,-1,,0,0,0,0.0,no unit-test script in package.json,,
+posx-ugaoo-admin,test,True,1,vitest,64,6,70,27.1,,v20.20.2,
+posx-ugaoo-backend,test:unit,True,1,jest,852,7,859,77.5,,v20.20.2,
+posx-ugaoo-store,,False,-1,,0,0,0,0.0,no unit-test script in package.json,,

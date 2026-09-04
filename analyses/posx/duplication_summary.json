@@ -1,0 +1,21 @@
+{
+  "portfolio_stats": {
+    "clones": 17658,
+    "duplicatedLines": 1259618,
+    "duplicatedTokens": 5900007,
+    "lines": 1981654,
+    "newClones": 0,
+    "newDuplicatedLines": 0,
+    "percentage": 63.563972318073695,
+    "percentageTokens": 63.379307625928895,
+    "sources": 16306,
+    "tokens": 9309043
+  },
+  "total_clone_pairs": 17658,
+  "cross_repo_clone_pairs": 15988,
+  "within_repo_clone_pairs": 1670,
+  "cross_repo_duplicated_lines": 1228524,
+  "within_repo_duplicated_lines": 48752,
+  "identical_relative_path_clusters": 2251,
+  "identical_relative_path_files_max_repo_count": 11
+}

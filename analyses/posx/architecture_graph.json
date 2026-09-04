@@ -1,0 +1,470 @@
+{
+  "representative_repo": "posx-mokobara-backend",
+  "total_nodes": 8199,
+  "total_edges": 14599,
+  "languages": [
+    {
+      "language": "TypeScript",
+      "file_count": 1062
+    },
+    {
+      "language": "SQL",
+      "file_count": 5
+    },
+    {
+      "language": "HTML",
+      "file_count": 4
+    },
+    {
+      "language": "JavaScript",
+      "file_count": 3
+    },
+    {
+      "language": "YAML",
+      "file_count": 3
+    },
+    {
+      "language": "Bash",
+      "file_count": 1
+    }
+  ],
+  "packages": [
+    {
+      "name": "modules",
+      "node_count": 379,
+      "fan_in": 0,
+      "fan_out": 0
+    },
+    {
+      "name": "api",
+      "node_count": 314,
+      "fan_in": 0,
+      "fan_out": 0
+    },
+    {
+      "name": "lib",
+      "node_count": 122,
+      "fan_in": 0,
+      "fan_out": 0
+    },
+    {
+      "name": "workflows",
+      "node_count": 64,
+      "fan_in": 0,
+      "fan_out": 0
+    },
+    {
+      "name": "jobs",
+      "node_count": 39,
+      "fan_in": 0,
+      "fan_out": 0
+    },
+    {
+      "name": "subscribers",
+      "node_count": 21,
+      "fan_in": 0,
+      "fan_out": 0
+    },
+    {
+      "name": "plans",
+      "node_count": 9,
+      "fan_in": 0,
+      "fan_out": 0
+    },
+    {
+      "name": "types",
+      "node_count": 4,
+      "fan_in": 0,
+      "fan_out": 0
+    }
+  ],
+  "layers": [
+    {
+      "name": "api",
+      "layer": "entry",
+      "reason": "has entry points, only outbound calls"
+    },
+    {
+      "name": "jobs",
+      "layer": "internal",
+      "reason": "fan-in=3, fan-out=25"
+    },
+    {
+      "name": "json",
+      "layer": "api",
+      "reason": "has HTTP route definitions"
+    },
+    {
+      "name": "lib",
+      "layer": "core",
+      "reason": "high fan-in (879 in, 7 out)"
+    },
+    {
+      "name": "modules",
+      "layer": "core",
+      "reason": "high fan-in (113 in, 37 out)"
+    },
+    {
+      "name": "subscribers",
+      "layer": "entry",
+      "reason": "only outbound calls"
+    },
+    {
+      "name": "workflows",
+      "layer": "entry",
+      "reason": "only outbound calls"
+    }
+  ],
+  "boundaries": [
+    {
+      "from": "api",
+      "to": "lib",
+      "call_count": 809
+    },
+    {
+      "from": "api",
+      "to": "modules",
+      "call_count": 72
+    },
+    {
+      "from": "modules",
+      "to": "lib",
+      "call_count": 37
+    },
+    {
+      "from": "subscribers",
+      "to": "lib",
+      "call_count": 23
+    },
+    {
+      "from": "subscribers",
+      "to": "modules",
+      "call_count": 16
+    },
+    {
+      "from": "jobs",
+      "to": "modules",
+      "call_count": 15
+    },
+    {
+      "from": "jobs",
+      "to": "lib",
+      "call_count": 10
+    },
+    {
+      "from": "lib",
+      "to": "modules",
+      "call_count": 7
+    },
+    {
+      "from": "workflows",
+      "to": "modules",
+      "call_count": 3
+    },
+    {
+      "from": "api",
+      "to": "jobs",
+      "call_count": 3
+    }
+  ],
+  "hotspots": [
+    {
+      "name": "sendApiResponse",
+      "qualified_name": "Users-rachitsrivastava-Developer-devx-posx-posx-mokobara-backend.src.lib.api-response.sendApiResponse",
+      "fan_in": 249
+    },
+    {
+      "name": "createSuccessResponse",
+      "qualified_name": "Users-rachitsrivastava-Developer-devx-posx-posx-mokobara-backend.src.lib.api-response.createSuccessResponse",
+      "fan_in": 243
+    },
+    {
+      "name": "createErrorResponse",
+      "qualified_name": "Users-rachitsrivastava-Developer-devx-posx-posx-mokobara-backend.src.lib.api-response.createErrorResponse",
+      "fan_in": 240
+    },
+    {
+      "name": "warn",
+      "qualified_name": "Users-rachitsrivastava-Developer-devx-posx-posx-mokobara-backend.src.lib.helpers.calculate-online-coupon-discount.warn",
+      "fan_in": 46
+    },
+    {
+      "name": "warn",
+      "qualified_name": "Users-rachitsrivastava-Developer-devx-posx-posx-mokobara-backend.src.workflows.store-coupon.steps.calculate-store-coupon-discount-step.warn",
+      "fan_in": 45
+    },
+    {
+      "name": "log",
+      "qualified_name": "Users-rachitsrivastava-Developer-devx-posx-posx-mokobara-backend.src.lib.helpers.calculate-online-coupon-discount.log",
+      "fan_in": 43
+    },
+    {
+      "name": "buildSummary",
+      "qualified_name": "Users-rachitsrivastava-Developer-devx-posx-posx-mokobara-backend.src.lib.helpers.build-summary.buildSummary",
+      "fan_in": 23
+    },
+    {
+      "name": "init",
+      "qualified_name": "Users-rachitsrivastava-Developer-devx-posx-posx-mokobara-backend.src.modules.unicommerce.service.UnicommerceService.init",
+      "fan_in": 23
+    },
+    {
+      "name": "getS3FilePath",
+      "qualified_name": "Users-rachitsrivastava-Developer-devx-posx-posx-mokobara-backend.src.lib.helpers.get-s3-file-path-for-order.getS3FilePath",
+      "fan_in": 18
+    },
+    {
+      "name": "startOfDayIST",
+      "qualified_name": "Users-rachitsrivastava-Developer-devx-posx-posx-mokobara-backend.src.lib.date-utils.startOfDayIST",
+      "fan_in": 14
+    }
+  ],
+  "clusters": [
+    {
+      "id": 10,
+      "label": "src",
+      "members": 204,
+      "cohesion": 0.7615979381443299,
+      "packages": [
+        "src"
+      ],
+      "edge_types": [
+        "CALLS"
+      ],
+      "top_nodes": [
+        "sendApiResponse",
+        "createSuccessResponse",
+        "createErrorResponse",
+        "addOrderDetailError",
+        "applyActorStoreFilter"
+      ]
+    },
+    {
+      "id": 6,
+      "label": "src",
+      "members": 107,
+      "cohesion": 0.7485714285714286,
+      "packages": [
+        "src",
+        "knowledge-os"
+      ],
+      "edge_types": [
+        "CALLS"
+      ],
+      "top_nodes": [
+        "log",
+        "init",
+        "init",
+        "completeUnicommerceFulfillments",
+        "GET"
+      ]
+    },
+    {
+      "id": 0,
+      "label": "src",
+      "members": 58,
+      "cohesion": 0.4966887417218543,
+      "packages": [
+        "src"
+      ],
+      "edge_types": [
+        "CALLS"
+      ],
+      "top_nodes": [
+        "warn",
+        "PUT",
+        "POST",
+        "uploadToS3",
+        "GET"
+      ]
+    },
+    {
+      "id": 50,
+      "label": "src",
+      "members": 46,
+      "cohesion": 0.6875,
+      "packages": [
+        "src"
+      ],
+      "edge_types": [
+        "CALLS"
+      ],
+      "top_nodes": [
+        "redeem",
+        "writeAudit",
+        "cancelVoucher",
+        "POST",
+        "POST"
+      ]
+    },
+    {
+      "id": 3,
+      "label": "src",
+      "members": 44,
+      "cohesion": 0.8941176470588236,
+      "packages": [
+        "src"
+      ],
+      "edge_types": [
+        "CALLS"
+      ],
+      "top_nodes": [
+        "call",
+        "redeem",
+        "cancelRedeem",
+        "ensureBatchOpen",
+        "getClient"
+      ]
+    },
+    {
+      "id": 7,
+      "label": "src",
+      "members": 42,
+      "cohesion": 0.6891891891891891,
+      "packages": [
+        "src"
+      ],
+      "edge_types": [
+        "CALLS"
+      ],
+      "top_nodes": [
+        "startOfDayIST",
+        "buildInwardsDigest",
+        "endOfDayIST",
+        "GET",
+        "warn"
+      ]
+    },
+    {
+      "id": 2,
+      "label": "src",
+      "members": 34,
+      "cohesion": 0.8723404255319149,
+      "packages": [
+        "src"
+      ],
+      "edge_types": [
+        "CALLS"
+      ],
+      "top_nodes": [
+        "POST",
+        "evaluateShopifyOffer",
+        "evaluateRetailOffer",
+        "evaluateOffersForCart",
+        "calculateSubtotalGap"
+      ]
+    },
+    {
+      "id": 64,
+      "label": "src",
+      "members": 24,
+      "cohesion": 0.918918918918919,
+      "packages": [
+        "src"
+      ],
+      "edge_types": [
+        "CALLS"
+      ],
+      "top_nodes": [
+        "hasPermissionByRole",
+        "hasPermission",
+        "resolveActorEmployee",
+        "checkRoleAccess",
+        "checkRoleAccessAny"
+      ]
+    },
+    {
+      "id": 46,
+      "label": "src",
+      "members": 22,
+      "cohesion": 1.0,
+      "packages": [
+        "src"
+      ],
+      "edge_types": [
+        "CALLS"
+      ],
+      "top_nodes": [
+        "buildDiscountPinEmail",
+        "formatINR",
+        "DiscountPinEmailHandler",
+        "resolveCartSnapshot",
+        "buildDiscountPinText"
+      ]
+    },
+    {
+      "id": 45,
+      "label": "src",
+      "members": 21,
+      "cohesion": 0.8275862068965517,
+      "packages": [
+        "src"
+      ],
+      "edge_types": [
+        "CALLS"
+      ],
+      "top_nodes": [
+        "syncShopifyCoupons",
+        "findDiscountCodeGraphQL",
+        "findCouponByCode",
+        "findByCode",
+        "shopifyCouponSyncJob"
+      ]
+    },
+    {
+      "id": 28,
+      "label": "src",
+      "members": 16,
+      "cohesion": 0.6551724137931034,
+      "packages": [
+        "src"
+      ],
+      "edge_types": [
+        "CALLS"
+      ],
+      "top_nodes": [
+        "GET",
+        "calculateGST",
+        "GET",
+        "GET",
+        "buildReturnRecords"
+      ]
+    },
+    {
+      "id": 47,
+      "label": "src",
+      "members": 16,
+      "cohesion": 0.9,
+      "packages": [
+        "src"
+      ],
+      "edge_types": [
+        "CALLS"
+      ],
+      "top_nodes": [
+        "effectiveUnitPrice",
+        "calculateOnlineCouponDiscount",
+        "applyDiscountsInOrder",
+        "distributeDiscount",
+        "validateOnlineCouponCode"
+      ]
+    }
+  ],
+  "entry_point_count": 20,
+  "route_count": 4,
+  "cross_repo_intelligence": {
+    "projects_scanned": 11,
+    "cross_http_calls": 0,
+    "cross_async_calls": 0,
+    "cross_channel": 0,
+    "cross_grpc_calls": 0,
+    "cross_graphql_calls": 0,
+    "cross_trpc_calls": 0,
+    "total_cross_edges": 0,
+    "indexed_repos": [
+      "posx-mokobara-backend",
+      "posx-mokobara-admin",
+      "posx-mokobara-store"
+    ]
+  }
+}

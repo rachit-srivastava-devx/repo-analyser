@@ -1,0 +1,9 @@
+{
+  "total_commits": 7137,
+  "total_authors": 50,
+  "authors_with_20plus_commits": 28,
+  "median_delivery_pct_20plus_commit_authors": 27.19,
+  "toil_clusters_found": 72,
+  "toil_cluster_min_size": 15,
+  "toil_commits_in_clusters": 3060
+}

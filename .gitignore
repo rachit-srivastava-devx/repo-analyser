@@ -1,0 +1,18 @@
+__pycache__/
+*.pyc
+.venv/
+venv/
+
+# Vendored external tool binary -- fetched by scripts/setup.sh, not committed
+tools/code-maat.jar
+
+# Per-repo raw tool dumps (full dependency-cruiser JSON, full jscpd
+# fragments) are large (280MB for the 26-repo posx run) and fully
+# regeneratable by re-running `cli.py analyze` -- not archived. Everything
+# derived from them (the actual CSV/JSON statistics, FINDINGS.md,
+# ROADMAP.md) IS committed, since that's the evidence this repo exists to
+# make reproducible and inspectable.
+analyses/*/depgraph_raw/
+analyses/*/jscpd_raw/
+_tmp/
+

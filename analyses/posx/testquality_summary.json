@@ -1,0 +1,39 @@
+{
+  "total_repos": 26,
+  "repos_with_unit_script": 17,
+  "repos_all_tests_passing": 4,
+  "repos_with_real_test_failures_right_now": 9,
+  "repos_with_real_test_failures_list": [
+    "posx-comet-backend",
+    "posx-demo-admin",
+    "posx-eume-admin",
+    "posx-eume-backend",
+    "posx-frido-admin",
+    "posx-frido-mobility-admin",
+    "posx-mokobara-admin",
+    "posx-ugaoo-admin",
+    "posx-ugaoo-backend"
+  ],
+  "repos_with_test_infra_but_zero_tests_written": 3,
+  "repos_with_test_infra_but_zero_tests_written_list": [
+    "posx-demo-backend",
+    "posx-frido-mobility-backend",
+    "posx-mokobara-clearance-backend"
+  ],
+  "repos_with_broken_test_config": 1,
+  "repos_with_broken_test_config_list": [
+    "posx-frido-b2b-backend"
+  ],
+  "repos_skipped_no_script": 9,
+  "skip_reasons": {
+    "posx-comet-store": "no unit-test script in package.json",
+    "posx-demo-store": "no unit-test script in package.json",
+    "posx-eume-store": "no unit-test script in package.json",
+    "posx-frido-b2b-store": "no unit-test script in package.json",
+    "posx-frido-mobility-store": "no unit-test script in package.json",
+    "posx-frido-store": "no unit-test script in package.json",
+    "posx-kb": "no unit-test script in package.json",
+    "posx-mokobara-store": "no unit-test script in package.json",
+    "posx-ugaoo-store": "no unit-test script in package.json"
+  }
+}
