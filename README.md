@@ -67,7 +67,9 @@ CSS are the source of truth for the exact tokens.
   `npm install` in each target repo is a precondition for `depgraph` and
   `testquality`; `ci_gates`/`ontology`/`escape`/`churn`/`complexity` need no
   install.
-- Java (for `churn` — `tools/code-maat.jar` needs a JVM)
+- Java (for `churn` — `tools/code-maat.jar` needs a JVM). The jar itself
+  isn't committed (see `.gitignore`) — run `bash scripts/setup.sh` once
+  after cloning to fetch it (idempotent, safe to re-run).
 - `gitleaks` and `semgrep` on PATH (for `security`)
 - `jscpd` on PATH (`npm i -g jscpd`), or reachable via `npx`
 - If the target repos pin a Node version other than your default, set
@@ -114,6 +116,11 @@ The PDF (`<out>/deep/<target>-chronicle-report.pdf`) and the capstone deck
 spec (`<out>/CAPSTONE_DECK.md`) are both derived entirely from the CSV/JSON
 every other module already wrote — rerun `deep_reports,exec_deck,pdf` alone
 any time you want fresh documents without re-scanning anything.
+
+`analyses/` (all run output) is gitignored — this repo ships the tool, not
+one run's findings. A real run's output includes secret-scan fragments and
+CVE data that has no business in a public repo; regenerate your own by
+running the CLI against your own target.
 
 Output lands in `<out>/`: one CSV or JSON per module, plus `run_log.json`
 recording what ran, what failed, and how long each module took. A module

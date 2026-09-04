@@ -6,13 +6,12 @@ venv/
 # Vendored external tool binary -- fetched by scripts/setup.sh, not committed
 tools/code-maat.jar
 
-# Per-repo raw tool dumps (full dependency-cruiser JSON, full jscpd
-# fragments) are large (280MB for the 26-repo posx run) and fully
-# regeneratable by re-running `cli.py analyze` -- not archived. Everything
-# derived from them (the actual CSV/JSON statistics, FINDINGS.md,
-# ROADMAP.md) IS committed, since that's the evidence this repo exists to
-# make reproducible and inspectable.
-analyses/*/depgraph_raw/
-analyses/*/jscpd_raw/
+# Run output. This is a tool repo, not a data repo -- analyses/ is
+# regenerated per-run by `cli.py analyze` against whatever target you point
+# it at, and a real run also carries real secret-scanning output (secret
+# fragments, CVE data) that has no business in a public tool repo. Keep
+# example output out of git; ship it separately if you want to share one
+# run's findings.
+analyses/
 _tmp/
 

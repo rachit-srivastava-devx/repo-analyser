@@ -1,9 +1,0 @@
-{
-  "escape_rate": 0.25,
-  "hotspot": 0.2,
-  "duplication": 0.15,
-  "no_ci_gate": 0.15,
-  "test_failure": 0.1,
-  "security": 0.1,
-  "bus_factor": 0.05
-}
