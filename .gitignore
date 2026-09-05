@@ -2,6 +2,17 @@ __pycache__/
 *.pyc
 .venv/
 venv/
+*.egg-info/
+build/
+dist/
+
+# Test/lint/type-check tool state -- machine-local caches, not source
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.coverage
+htmlcov/
+.mutmut-cache
 
 # Vendored external tool binary -- fetched by scripts/setup.sh, not committed
 tools/code-maat.jar

@@ -1,0 +1,87 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "repo-analyser"
+version = "0.2.0"
+description = "Generalised, reproducible multi-dimensional analysis for a git repo or a portfolio of repos"
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+    "pydriller>=2.10",
+    "lizard>=1.24",
+    "pyyaml>=6.0",
+    "matplotlib>=3.8",
+    "networkx>=3.0",
+    "markdown>=3.5",
+    "weasyprint>=60.0",
+    "tabulate>=0.9",
+    "radon>=6.0,<7.0",  # Python API (radon.metrics.mi_visit), not the CLI -- a stable, simple
+                        # float return, not a parsed text/CLI-output format the way
+                        # mutmut/dependency-cruiser are, so a floor+major-ceiling is enough
+                        # (docs/METHODOLOGY.md #37); verified installing and running clean
+                        # under this project's own Python version before adding it.
+]
+
+[project.scripts]
+repo-analyser = "repo_analyser.cli:main"
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.4",
+    "pytest-cov>=4.1",
+    "ruff>=0.4",
+    "mypy>=1.8",
+    "mutmut==3.7.0",  # exact pin: this tool shells out to mutmut's CLI and parses its
+                      # text output directly. 3.3.1->3.7.0 broke that output's default
+                      # visibility with no major-version bump (docs/METHODOLOGY.md #24)
+                      # and 3.3.1 predates the macOS fork-safety fix this tool now
+                      # depends on (#23) -- a floor-only constraint silently re-exposes
+                      # either failure mode on the next install. Bump deliberately, and
+                      # re-verify collectors/mutation.py's real-execution tests when you do.
+]
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+repo_analyser = ["reporting/fonts/*.ttf"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "--strict-markers"
+
+[tool.coverage.run]
+source = ["src/repo_analyser"]
+omit = ["src/repo_analyser/reporting/fonts/*"]
+
+[tool.ruff]
+line-length = 120
+target-version = "py310"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "B", "UP"]
+
+[tool.ruff.lint.per-file-ignores]
+# These four modules' job is emitting long markdown/HTML prose as string
+# literals (report narrative, chart captions, deck slide text) -- wrapping
+# every such line at 120 chars doesn't improve readability the way it does
+# for code, and risks changing the generated document's actual whitespace.
+"src/repo_analyser/synthesis/deep_reports.py" = ["E501"]
+"src/repo_analyser/synthesis/exec_deck.py" = ["E501"]
+"src/repo_analyser/reporting/pdf_export.py" = ["E501"]
+"src/repo_analyser/reporting/report.py" = ["E501"]
+
+[tool.mypy]
+# Deliberately NOT pinned to this project's actual floor (3.10, enforced by
+# `requires-python` + ruff's target-version instead): mypy applies
+# `python_version` to every stub file it follows into, including
+# dependencies' own -- numpy's installed stubs use PEP 695 `type` syntax
+# that requires 3.12 to even parse, and numpy isn't a direct dependency of
+# this project at all (pulled in transitively by matplotlib). Pinning here
+# would make mypy fail on a dependency's stub, not on anything in this
+# codebase. Letting it default to the running interpreter avoids that
+# false failure; syntax-level version compatibility is ruff's job (see
+# target-version above), not mypy's.
+ignore_missing_imports = true

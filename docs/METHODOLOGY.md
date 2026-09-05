@@ -6,7 +6,7 @@ defined formula. Nothing here is inferred by a language model reading code
 and guessing; every module is deterministic and rerunnable — same commit,
 same answer.
 
-## Design principle (CHRONICLE-ADR-001)
+## Design principle (docs/adr/0001-fail-loud-not-silent.md)
 
 A module either returns real computed data, or raises an exception with the
 tool's real stderr attached. It never returns an empty or zero result for
@@ -291,14 +291,512 @@ own construction failures is less trustworthy than one that shows them.
     `pdf_export.py` were restyled to the doctrine's tokens -- Paper/Ink
     palette, one accent (`#1E6FFF`) used only for the headline emphasis word
     and each chart's single focus metric, real Inter Tight / Source Serif 4
-    / JetBrains Mono font files bundled in `chronicle/fonts/` (not a system
-    sans standing in for them), hairline rules, zero border-radius, zero
-    shadows, no table zebra-striping. Two real bugs found applying it:
-    (a) every chart was cited by filename in prose ("see charts/x.png")
-    but never actually embedded as a markdown image -- no report had ever
-    visually shown a chart, caught by looking at a rendered page and finding
-    the promised image simply absent; (b) the PDF assembled its sections in
-    alphabetic filename order, not the intended narrative sequence, so
-    "Commit Ontology" rendered as "Section 01" ahead of "Repository
-    Analysis" -- fixed by having `pdf_export.py` import the canonical order
-    from `deep_reports.REPORT_SEQUENCE` instead of sorting filenames.
+    / JetBrains Mono font files bundled alongside `charts.py`/`pdf_export.py`
+    in `reporting/fonts/` (not a system sans standing in for them), hairline
+    rules, zero border-radius, zero shadows, no table zebra-striping. Two
+    real bugs found applying it: (a) every chart was cited by filename in
+    prose ("see charts/x.png") but never actually embedded as a markdown
+    image -- no report had ever visually shown a chart, caught by looking
+    at a rendered page and finding the promised image simply absent; (b)
+    the PDF assembled its sections in alphabetic filename order, not the
+    intended narrative sequence, so "Commit Ontology" rendered as "Section
+    01" ahead of "Repository Analysis" -- fixed by having `pdf_export.py`
+    import the canonical order from `deep_reports.REPORT_SEQUENCE` instead
+    of sorting filenames.
+13. **The src-layout restructuring (ADR-0002) broke two error-handling
+    paths that nothing exercised until real tests forced them.**
+    `churn.py` and `complexity.py` each had a second, *indented*
+    `from .util import write_json` inside their `if errors:` branch --
+    invisible to a grep for line-start imports, and to an import-time
+    smoke test, because it only executes when a repo actually errors
+    during analysis. Caught by writing (and running) a test that
+    deliberately triggers that branch. Lesson: an import-time smoke test
+    proves a module *loads*; it proves nothing about code paths gated on
+    runtime conditions.
+14. **A pytest collection error was silently miscounted as a failed test.**
+    `pytest --tb=no -q` on a file with a bad import prints "N error(s)
+    during collection", which matched the generic summary regex's
+    `errors` group -- reporting `tests_failed=1, tests_total=1` for a run
+    where *zero* tests actually executed (pytest aborts the whole session
+    on a collection error, not just the broken file, confirmed by
+    observing a real passing test alongside a broken-import file still
+    report 0 executed). Indistinguishable, to a report reader, from "one
+    real test ran and failed an assertion" -- exactly the failure class
+    this tool's own ADR-0001 exists to prevent, found in itself. Fixed
+    with a dedicated `PYTEST_COLLECTION_ERROR_RE` checked before the
+    generic summary parse.
+15. **`testquality.py` resolved a bare `pytest` from `PATH`, not the
+    target repo's own virtualenv** -- found by running this tool on
+    itself: every test file failed to import `repo_analyser` because the
+    global `pytest` had no idea this project's package existed, reporting
+    (correctly, per #14's fix) "19 errors during collection" for a repo
+    whose own 300-test suite genuinely passes under its own `.venv`. Same
+    principle `lint_quality.py` already applied to ESLint (a repo's own
+    installed tool beats a global one); `_pytest_command()` now prefers
+    `<repo>/.venv/bin/pytest` / `<repo>/venv/bin/pytest` when present.
+16. **Mutation testing picked a test file as its own mutation target.**
+    `select_mutation_targets()` chose the single highest
+    complexity×churn hotspot with no regard for whether that file *was*
+    a test -- on this tool's own (test-heavy) portfolio, that hotspot was
+    `tests/collectors/test_churn.py`, and mutating a test file answers
+    nothing (there's no separate source left for its own now-mutated
+    assertions to have an opinion about). Fixed by excluding files
+    matching `core.lang.TEST_FILE_RE` (promoted from a pattern that used
+    to live only in `ontology.py`, now shared) before ranking hotspots.
+17. **mutmut 3.3.1's real status vocabulary and config keys, grounded by
+    running it, not by reading the deprecation warning text.** Two
+    findings: (a) a whole file with *zero* test coverage at all makes
+    mutmut abort early ("Stopping early, because we could not find any
+    test case for any mutant") and report every mutant as `not_checked`
+    -- a different status than the per-mutant `no tests` case, and one
+    this tool's parser didn't originally bucket anywhere, silently
+    vanishing from every counted total. (b) mutmut's own deprecation
+    warning suggests renaming `paths_to_mutate` to `source_paths` in
+    `setup.cfg` -- doing so was tried, and it broke every real run
+    ("please specify it by adding paths_to_mutate=... in setup.cfg"),
+    caught immediately by the test suite. Kept the deprecated-but-working
+    key rather than trust the warning's suggested replacement unverified.
+18. **A macOS-specific fork-safety crash, root-caused via a real crash
+    report, not dismissed as flakiness.** An obviously-killable mutmut
+    mutant intermittently reported "segfault" (exit code -11) instead of
+    "killed". The macOS crash reporter's own report pinpointed the exact
+    cause: `*** multi-threaded process forked *** / crashed on child side
+    of fork pre-exec`, inside `_setproctitle` calling into CoreFoundation
+    -- a well-known hazard (Objective-C runtime / CoreFoundation is not
+    fork-safe from a multithreaded parent without an immediate `exec()`),
+    the same reason CPython's own `multiprocessing` defaults macOS to
+    `spawn` instead of `fork`. Not a bug in this tool or in mutmut's
+    result-parsing; tracked as its own `segfault` status, never folded
+    into "survived" or "killed". At the time this was written the blast
+    radius looked contained to one mislabeled status per mutant -- it
+    was not. See #23: this same crash brought down the whole host during
+    the first real portfolio-scale run.
+19. **`testquality.py`'s Python path replaced three hand-written regexes
+    (`PYTEST_SUMMARY_RE`, `PYTEST_NO_TESTS_RE`, `PYTEST_COLLECTION_ERROR_RE`)
+    with pytest's own `--junit-xml` structured output**, parsed via stdlib
+    `xml.etree.ElementTree`. This wasn't a style preference: one of those
+    three regexes existed *specifically* to patch around a miscount the
+    other two caused (a collection error's prose matched the generic
+    summary regex's `errors` group). JUnit XML reports `errors` and
+    `failures` as separate, unambiguous integer attributes on the
+    `<testsuite>` element -- the exact distinction three regexes were
+    reconstructing from human-readable text, given for free by an
+    interface pytest already ships and maintains. Verified safe by
+    running all 30 existing testquality tests (including the two
+    regression tests for the original miscount bug) against the new
+    implementation with zero test changes -- same external behavior,
+    structurally sounder internals.
+20. **Two hand-rolled markdown-table builders (`deep_reports._md_table`
+    and `report._table`) replaced with the `tabulate` library**, and both
+    gained pipe-character escaping neither the old code nor tabulate's
+    own github format applied automatically -- a commit subject, semgrep
+    message, or file path containing a literal `|` would otherwise
+    silently corrupt a table's column structure. Found while auditing the
+    codebase for hand-rolled logic that a stable, already-installed-
+    adjacent library already solves correctly.
+21. **`report.py`'s "Test quality" section read a JSON key
+    (`repos_with_test_failures`) that `testquality.py` has never written**
+    -- the real key is `repos_with_real_test_failures_right_now`. Found
+    by cross-referencing the read side against the write side while
+    auditing report.py for the tabulate swap above. `.get(key, 0)`
+    silently returned the default on every single run since this line was
+    written: REPORT.md's "N repos have failing tests RIGHT NOW" line has
+    always read **0**, regardless of the real number, for every portfolio
+    this tool has ever been pointed at. Caught only because the audit
+    happened to read both sides of that boundary in the same pass -- had
+    zero test coverage before this fix (see `tests/reporting/test_report.py`,
+    added in the same change, including a regression test with a nonzero
+    real value to prove the read side actually connects to the write side
+    now).
+22. **Four independently hand-maintained "exclude these directories" lists
+    had drifted out of sync**: `core/lang.py`, `depgraph.py` (two of its
+    own, one per language path), `complexity.py`, and `exact_duplicates.py`
+    each kept a separate copy, and only `core/lang.py`'s covered
+    `venv`/`.venv`/`__pycache__`/`vendor`/`target`. Found while preparing
+    to point this tool at a real portfolio containing multi-GB Rust repos
+    (`target/` build directories) for the first time -- `complexity.py`
+    would have handed lizard thousands of files of compiled-dependency
+    source copies. Consolidated onto `core.lang.EXCLUDE_DIR_PARTS` as the
+    one source of truth; each module now derives its own needed shape
+    (a glob list for lizard's `-x` flag, a plain set for the others) from
+    it instead of maintaining an independent copy. Regression tests added
+    for both previously-uncovered directories (`target/`, `.venv/`) in
+    both previously-affected modules.
+23. **#18's "segfault" crash escalated to a real kernel panic during the
+    first full-portfolio mutation run (2026-09-04), taking the whole host
+    down.** Not a metaphor, and not diagnosed by inference: the panic log
+    (`/Library/Logs/DiagnosticReports/Retired/panic-full-*.panic`) gives
+    the literal reason -- `panic(...): watchdog timeout: no checkins from
+    watchdogd in 91 seconds` -- with `memoryStatus` showing 14MB free RAM
+    and kernel_task threads blocked on a contended mutex at the moment of
+    panic, and 11 matching SIGSEGV `.ips` crash reports in the 20 minutes
+    before it, all with the identical stack from #18
+    (`_setproctitle` -> `CFBundleGetFunctionPointerForName` ->
+    `os_log_type_enabled`), all children of this tool's own process
+    coalition. Root cause: `_analyze_python_repo` invoked bare `mutmut`
+    off `PATH` with no control over whether the resolved version disabled
+    `setproctitle`'s fork-unsafe behavior on Darwin -- mutmut>=3.7.0
+    defaults `use_setproctitle` to `False` on macOS
+    (`boxed/mutmut#450`), but this tool never asserted that itself, so it
+    was exposed to whatever version happened to be installed. Fix:
+    `_mutmut_setup_cfg_text` now writes `use_setproctitle=False` into the
+    generated `[mutmut]` section explicitly, verified against mutmut's
+    own `configuration.py` (`setup_cfg_conf`'s boolean parsing accepts
+    it) rather than left to a version- and platform-detection-dependent
+    default. This is the one finding in this log that isn't "the report
+    was wrong" -- it's "the tool that produces the report can crash the
+    machine running it," which is why it gets its own entry instead of
+    just amending #18.
+25. **`duplication.py`'s jscpd timeout (300s) was too tight for a real
+    large portfolio.** Found the same day as #23/#24, on the first full
+    run against Principal Engineering (a Rust+ML portfolio): jscpd timed
+    out at exactly 300s and the whole `duplication` module was recorded
+    as failed, even though the other 19 modules in the same run completed
+    fine -- a real scalability ceiling, not a crash or a parsing bug.
+    Bumped to 900s. Still a hard ceiling (this tool does not do unbounded
+    subprocess waits), just a more realistic one for a portfolio-root
+    scan, which by this module's own design has no natural size cap.
+24. **mutmut drifted from 3.3.1 (what this integration was grounded
+    against) to 3.7.0 in this environment, silently, via an unpinned
+    dependency -- and the real-execution test suite caught it.** Found
+    while re-verifying #23's fix: `test_real_run_produces_internally_
+    consistent_counts` went red with `ran=False`, `skip_reason='mutmut
+    produced no parseable results'`, even though the run itself
+    succeeded. 3.7.0 replaced 3.3.1's CLI with a Textual-based progress
+    UI and changed `mutmut results`' default to print nothing; the fix
+    (confirmed against the actual installed binary's `--help` output, not
+    guessed) is `mutmut results --all true`, which reproduces the exact
+    `<qualified_name>: <status>` line format this tool's regex already
+    parses. Two lessons: an unpinned dependency in a tool that shells out
+    to real binaries is itself a correctness risk, not just a mutation-
+    testing-specific one -- and the reason this was caught at all is that
+    the real-execution test actually runs mutmut end to end instead of
+    asserting against a recorded fixture.
+26. **`mutation.py`'s `_analyze_js_repo` hardcoded `testRunner: "jest"` in its
+    Stryker config unconditionally, with zero detection.** Found by an
+    independent hardcoding audit (a subagent that actually ran this CLI
+    against fresh throwaway repos to prove `discover_repos()` itself is
+    generic, then read every collector for the same class of bug).
+    `testquality.py` already had the correct jest-vs-vitest detection --
+    check whether the repo's own chosen unit-test script body contains
+    "vitest" or "jest" -- but mutation.py never used it, so pointing this
+    tool at a vitest repo would install Stryker's jest plugin regardless,
+    which reports "No tests were executed" and gets recorded as an ordinary
+    skip -- not loud, so it would go unnoticed in a real report rather than
+    erroring. Fix: the shared detection (now `detect_js_test_runner`) and
+    the script-selection it depends on (now `pick_unit_script`) were moved
+    out of testquality.py into `core/lang.py` so both modules read
+    package.json's chosen script the same way and can never disagree about
+    which runner a repo uses. `_analyze_js_repo` now detects the real
+    runner, installs the matching Stryker plugin
+    (`@stryker-mutator/vitest-runner` vs `@stryker-mutator/jest-runner`,
+    grounded against Stryker's own vitest-runner docs, not guessed), and
+    builds a runner-shaped config: jest needs its `configFile` spelled out
+    explicitly (point 3 above), vitest auto-discovers its own config file
+    and none is guessed for it here -- hardcoding one would just be this
+    same bug again for a repo that names its vitest config differently. An
+    undetectable runner is now a named skip reason instead of a silent
+    wrong guess. Verified end to end against two real, from-scratch fixture
+    repos (not just mocked unit tests): a jest fixture reproduced the
+    pre-existing working path (3/3 mutants killed, 100% score, confirming
+    no regression), and a vitest fixture -- the actual new capability --
+    initially still failed for real, with `"No tests were executed"`, even
+    with the runner correctly detected as vitest and the correct plugin
+    installed. The real Stryker log named the exact cause: `"Vitest failed
+    to find test files related to mutated files"` -- Stryker's vitest
+    runner defaults `related: true` (only run tests it thinks are related
+    to the mutated file) and its own detection failed even though the
+    fixture's one test file directly imports the one source file, a
+    documented Stryker unreliability (see its troubleshooting page), not
+    a bug in this tool's config-building. Since this tool mutates arbitrary
+    target repos it doesn't control the test-authoring style of, a silent
+    "no tests found" is worse than a slower-but-correct full-suite run, so
+    the vitest config now explicitly sets `related: False`. Re-verified
+    after that change: 2/2 mutants killed, 100% score, `ran=True`, no skip
+    reason -- vitest mutation testing now genuinely works, not just
+    "detects vitest and stops silently doing nothing."
+27. **The same function's `env_extra = {test_type_env: "unit"}`, combined
+    with a default `test_type_env: str = "unit"`, set an environment
+    variable literally *named* `unit` (value `"unit"`), not `TEST_TYPE=unit`
+    as the docstring and #11 both intended.** Found by the same audit.
+    Every JS mutation run to date -- including the one that reproduced a
+    66.7% mutation score for `posx-mokobara-backend` -- ran with this wrong
+    env var, meaning the `TEST_TYPE`-gated `testMatch` trick documented
+    above never actually fired via this tool. Whether that specific
+    already-recorded score is still correct depends on what
+    `posx-mokobara-backend`'s own jest config falls back to with
+    `TEST_TYPE` unset -- not re-checked as part of this fix, and worth a
+    dedicated re-run before treating that number as final. Fixed by
+    changing the default to `test_type_env: str = "TEST_TYPE"`, and the
+    whole injection is now scoped to `runner == "jest"` (see #26) --
+    vitest has no documented equivalent quirk, so nothing is injected for
+    it.
+28. **This tool's own security exposure had never been documented, only the
+    exposure it *scans for*.** Raised directly by the user, stepping back
+    to grade this project against its own operating standard rather than
+    just requesting another scanner: `testquality`/`mutation` execute
+    arbitrary target-repo code by design (that's what "actually run the
+    tests" means), and `depgraph`/`mutation` additionally install this
+    tool's own chosen packages (dependency-cruiser, Stryker) *inside* the
+    target repo's own directory. Neither is fixable by a flag -- the first
+    is inherent to the tool's purpose, the second is a real but narrower
+    supply-chain vector (a compromised repo's own `.npmrc`/registry config
+    hijacking a trusted package's install via a postinstall script).
+    Fixed the narrower one: both install call sites now pass
+    `--ignore-scripts` / `npm_config_ignore_scripts=true` (`npx` has no
+    `--ignore-scripts` flag of its own, confirmed against `npx --help`
+    directly rather than assumed) -- `core.util.run()` grew a generic
+    `extra_env` parameter for this, mirroring the shape of its existing
+    `extra_path` parameter. The inherent exposure is now documented
+    explicitly and prominently (README's own "Security model" section,
+    read before Usage; the full breakdown in `docs/ARCHITECTURE.md`)
+    instead of living only in a contributor's head -- real sandboxing
+    (container/VM isolation per run) is named as the concrete next step
+    for anyone running this against untrusted repos, not attempted here.
+29. **Every collector ran its per-repo loop strictly sequentially, even
+    though each iteration is one I/O-bound subprocess call independent of
+    every other repo.** Raised directly by the user: for a 26-repo
+    portfolio, that's the wall-clock cost of 26 sequential subprocess
+    calls stacked up, mostly spent *waiting*, not burning this tool's own
+    CPU. Fixed with a small, capped `ThreadPoolExecutor`
+    (`core.util.run_concurrent`) applied to `security`, `complexity`,
+    `deps_audit`, `lint_quality`, and `depgraph` -- threads, not
+    `multiprocessing`/raw `fork()`, since `subprocess.run()`/`Popen`
+    already release the GIL while the child runs, so threads get the
+    concurrency benefit with zero new fork-safety surface. `duplication`
+    was checked and deliberately left alone: it runs jscpd *once* across
+    the whole portfolio root by design (to see duplication *between*
+    repos), not once per repo, so there is no per-repo loop to
+    parallelize there. `mutation` was checked and deliberately excluded,
+    not just left sequential by oversight: mutmut and Stryker each
+    already fork their own worker subprocesses internally, and this
+    tool's own concurrency on top would multiply the exact fork-crash
+    hazard that caused a real kernel panic (#23), not just add load -- a
+    one-line comment on `run_mutation` itself says so, so a future change
+    doesn't "helpfully" parallelize it. Sized off real resource state
+    rather than a fixed worker count: `safe_worker_count` reads
+    `sysctl vm.swapusage` (same signal and 6000MB threshold as this
+    machine's own `~/.claude/hooks/resource-safety-gate`, grounded against
+    the same two real incidents) and falls back to fully sequential when
+    swap is already elevated. Also checked, per the user's specific ask:
+    whether `core.util.run()` used `preexec_fn` anywhere -- the identical
+    fork-before-exec hazard class as #23's crash. It did not (confirmed by
+    grep, not assumed); see #30 for what that same check *did* turn up.
+30. **A `run()` timeout doesn't actually free the resources it's meant to
+    bound if the child spawns its own child.** Found live, not in a lab,
+    while re-running `duplication` against the real Principal Engineering
+    portfolio to verify #25's timeout bump: the CLI reported jscpd as
+    "timed out after 900 seconds" and exited, but the real
+    `jscpd-darwin-arm64` binary was still alive 15+ minutes later, `ps`
+    showing it reparented to `launchd` (ppid 1) and still burning ~75% CPU
+    and 2.9GB RSS -- a genuine still-running orphan, confirmed and killed
+    by hand, not inferred. Root cause: plain `subprocess.run(...,
+    timeout=...)` only kills the *direct* child it spawned; jscpd's own JS
+    entry point had already spawned its native binary as a *grandchild*,
+    which the timeout's kill signal never reached. Fixed by switching
+    `run()` from `subprocess.run` to manual `Popen`+`communicate()`, with
+    `start_new_session=True` (puts the whole tree in its own process
+    group) and `os.killpg(...)` instead of `proc.kill()` on timeout --
+    deliberately not `preexec_fn=os.setsid`, which would reintroduce the
+    identical fork-before-exec hazard class that caused #23's real kernel
+    panic; `start_new_session` gets the same process-group result via the
+    safe `posix_spawn` path. Verified with a real (not mocked) regression
+    test: a `sh -c "sleep 30 & ...; wait"` child that spawns its own
+    backgrounded grandchild, timed out at 1s, confirming the grandchild's
+    pid is actually gone afterward (`os.kill(pid, 0)` raising
+    `ProcessLookupError`), not just that the wrapper exited. A timeout
+    that doesn't free its resources is nearly as dangerous as no timeout,
+    especially for a tool whose own history includes a real crash from
+    uncontrolled subprocess resource use.
+31. **The captured raw output for "Stryker produced no mutation.json" was a
+    *tail* slice (`combined[-500:]`), which throws away the one line that
+    actually names the failure for this branch's most common real
+    trigger.** Found while writing this report: `analyses/posx_after/
+    FINDINGS.md` §11 documented 3 of 4 real, mutation-eligible posx repos
+    crashing with an unresolved error, the captured text starting mid-path
+    (`s/rachitsrivastava/...`, `astava/Developer/...`,
+    `itsrivastava/Developer/...` -- each cut at a different offset) and
+    ending in `innerError: undefined` / `Node.js v20.20.2`, explicitly
+    flagged there as "root cause not yet known." That exact shape is a
+    textbook Node.js uncaught-exception dump: the real error type and
+    message print *first*, then the stack frames, then the engine version
+    *last* -- so a tail slice keeps only the frames and version, never the
+    line that would have named the actual exception. Not a new run needed
+    to confirm this -- the truncation pattern in the already-captured data
+    matches the mechanism exactly. Fixed by slicing `combined[:2000]`
+    (head, not tail) instead. Doesn't retroactively recover the 3 posx
+    repos' actual error text (that data is already gone, overwritten by
+    every re-run since), but the next re-run of `ROADMAP.md` §3a will
+    surface it directly instead of needing the separate manual
+    `--logLevel trace` step that section still recommends as its own
+    concrete next step.
+32. **`knowledge_graph.py` was "half baked": 2 node types, 3 edge types,
+    `SHARES_PACKAGE` npm-only, and it never ingested `depgraph.py`'s own
+    already-computed import graph despite that data already existing on
+    disk.** Raised by the user directly. Both real, in-scope gaps closed:
+    (1) a new `IMPORTS` file&lt;-&gt;file edge, read straight from
+    `depgraph_raw/*.json` -- zero new scanning cost, exactly matching this
+    module's own stated "reads only files already written by other
+    modules" design. Two on-disk shapes needed normalizing: Python/Go's
+    own `{"nodes": [...], "edges": [...]}` (already internal-only) and
+    JS's raw dependency-cruiser JSON (still has node_modules/external
+    noise, filtered via the newly-shared `core.lang.is_internal_js_module`
+    -- hoisted out of `depgraph.py`'s `_aggregate()` rather than imported
+    cross-collector, since `docs/ARCHITECTURE.md`'s own rule for `graph/`
+    is "reads collectors' output files, not their code"). (2)
+    `SHARES_PACKAGE` generalized past npm to the same three languages
+    `depgraph.py`/`testquality.py`/`mutation.py` already support --
+    `requirements.txt` for Python, `go.mod`'s `require` block for Go.
+    First attempt gated the reader choice on `detect_repo_language`'s
+    dominant-file-extension heuristic and broke an existing test: a repo
+    can have a manifest (a real ecosystem) without yet having enough of
+    that language's own *source* files to win the file-count vote (true
+    of every fixture in this test file, which only ever write a
+    `package.json`, never real `.ts` files). Fixed by keying the
+    ecosystem off *which manifest reader actually found dependencies*
+    instead -- matching the original npm-only code's own simpler "if
+    package.json exists, treat as npm" logic, just extended to three
+    manifest types. Same-ecosystem-only pairing (not just the pre-existing
+    >=5-shared-package floor) also now rules out a same-named package in
+    two unrelated ecosystems (npm's and PyPI's own separate "requests")
+    ever counting as a real shared dependency. A basic local query helper
+    (so the graph is useful without an external tool) was in the same
+    backlog item but not built this pass -- GraphML export + Gephi/yEd/
+    Neo4j import remains the only way to query it today.
+33. **mutmut got pinned exact only *after* its drift broke something real
+    (#24) -- nobody had checked whether the same class of risk exists for
+    this tool's other external CLI tools.** Raised directly by the user.
+    Audited every one: `dependency-cruiser` (via `npx --yes dependency-
+    cruiser`, no version at all) was the one real, fixable instance found
+    -- an unpinned `npx` call always resolves whatever's latest or
+    stale-cached, and this exact module already has its own documented,
+    hard-won behavioral quirk (the "silently returns 0 modules for a dir
+    arg" note a few lines above `_analyze_js_repo`'s npx call) diagnosed
+    and grounded against one specific version, 18.2.0 -- confirmed as the
+    real current npm-registry version before pinning to it, not guessed.
+    Now pinned: `dependency-cruiser@18.2.0`. `lizard` is a pip dependency
+    already declared in `pyproject.toml`, just with a floor and no ceiling
+    (`>=1.24`) -- lower risk than an entirely unpinned external CLI, and
+    left as-is rather than guessing an upper bound with no observed
+    breakage to justify one. `gitleaks`, `semgrep`, `osv-scanner`, and
+    `jscpd` are a different, harder case, honestly named rather than
+    silently left out: all four are OS-package-manager or global-npm
+    installs this Python project has no install-time control over at all
+    (README's own Requirements section already says "on PATH" for all
+    four) -- pinning them isn't a one-line fix the way the npm-managed
+    `dependency-cruiser` call was. The concrete, buildable next step for
+    these four: a `--version` check against each on startup, logged (or
+    written to run_log.json) against a documented "last verified against"
+    version per tool, so a future drift is visible in the output instead
+    of silent -- not built this pass.
+34. **No E2E test-suite detection.** From the user's original backlog:
+    `testquality.py` is deliberately unit-tests-only (its own docstring),
+    and `ci_gates.py`'s generic `TEST_RE` already matches `playwright
+    test`/`cypress run` as a side effect of asking "did *some* test
+    command run" -- but nothing answered "does an E2E suite exist, and
+    does CI actually run it" as its own question. New module,
+    `e2e_quality.py`: two independent presence signals (package.json
+    dependency names; a framework's own conventional config file --
+    checked separately since a repo can have either without the other),
+    then a framework-specific CI-step regex distinct from ci_gates.py's
+    broader one (verified with a real regression test: `npm test` in a
+    workflow must NOT count as evidence a Playwright suite specifically
+    ran, even though ci_gates.py's own TEST_RE would count it as *some*
+    test running). Selenium's own npm package and WebdriverIO (the
+    realistic way most JS/TS repos actually reach Selenium/WebDriver
+    today) fold into one `selenium/webdriver` family rather than two
+    thinly-populated categories. Scope stated honestly: JS/TS only --
+    Playwright-Python and Python's own Selenium bindings are real and not
+    covered, would need a different signal (requirements.txt/pyproject.toml
+    package names) not yet built. Not added to `SLOW_MODULES`: unlike
+    every other new-feature addition tonight, this one calls zero
+    subprocesses (package.json/config-file/workflow-YAML are all local
+    reads), so it belongs with `ci_gates`/`ontology`, not `testquality`.
+35. **Added `synthesis/trends.py`: run-over-run regression/improvement
+    detection against a saved baseline, closing the last item on the
+    user's original backlog** ("self learning loops" -- the existing
+    growing bug log in this very file is a static, manual form of that,
+    not an automated one). Reads a curated, real subset of fields already
+    written by other collectors' own `*_summary.json` files (grounded
+    against this run's actual on-disk files, not guessed field names) --
+    secrets/CVE/lint-error counts, mean mutation score, duplication
+    percentage, escape counts and latency, E2E coverage -- classifies each
+    as improved/regressed/unchanged/new against whatever baseline was
+    saved in the same `--out` directory last time, then overwrites that
+    baseline with this run's own numbers. A real gap found writing this:
+    `core.util.read_json` doesn't catch malformed JSON, so a corrupted
+    summary file from a prior crashed run would have taken this module
+    down with it rather than just reporting that one metric as
+    unreadable -- caught by a test that deliberately writes invalid JSON,
+    not by inspection.
+36. **`duplication.py`'s jscpd timeout (#25/#30) had been bumped 300s ->
+    900s -> 1800s, failing all three times against the same real
+    portfolio -- and the actual cause was never the timeout value.**
+    Found while re-running it for this report: `du -sh` on the two large
+    repos in that portfolio showed `fleet-rs` at 3.3GB and `fleet` at
+    1.8GB, both containing multi-gigabyte `target`/`var`/`vendor`
+    directories -- and both repos' own `.gitignore` files explicitly
+    exclude exactly those directories (Rust build output, runtime logs,
+    vendored dependencies). `run_duplication`'s jscpd invocation passed
+    `--no-gitignore`, with no rationale surviving anywhere in this
+    codebase's own decision log, forcing jscpd to scan gigabytes of
+    generated/vendored content its own maintainers had explicitly marked
+    as not real source -- a self-inflicted scan-scope explosion, not a
+    genuine "this much real code takes this long" ceiling. Removed the
+    flag; jscpd's own default already respects `.gitignore`, which is
+    what real source-only duplication scanning wants. Verified with a
+    real (not mocked) end-to-end test: a block duplicated between a
+    tracked file and a `.gitignore`d one, in an actual git repo (jscpd's
+    gitignore-handling needs a real `.git` present to mean anything, same
+    as git itself), is no longer reported as a clone. Re-run against the
+    real portfolio queued after this fix to confirm it resolves the
+    timeout for real, not just in a synthetic fixture -- confirmed: the
+    same real portfolio that had failed at 300s, then 900s, then 1800s
+    completed in **4.5 seconds**, a ~400x reduction, conclusive
+    confirmation this was the actual cause all along.
+37. **Added `code_quality.py`: a keyless SonarQube Quality Gate stand-in**,
+    the last item on the user's original backlog. SonarQube Community
+    Edition needs a live Java/Docker server, which doesn't fit this
+    tool's single-CLI-invocation architecture. Python: radon's
+    Maintainability Index via its own Python API directly (not a
+    subprocess -- verified installing and running clean under this
+    project's own Python 3.14 before adding it as a real, pinned
+    dependency, `>=6.0,<7.0`; a floor+ceiling rather than mutmut's exact
+    pin since a stable float-returning API isn't exposed to the
+    parsed-CLI-text-output version-drift risk that justified that
+    stricter pin). Checked a currently-maintained JS/TS alternative before
+    writing anything (last real release matters after tonight's #33
+    version-pinning audit): none found -- `wily` (last released
+    2026-04-26, more recently than radon itself) turned out to be a
+    git-history complexity-*trend* tool built on top of complexity
+    engines like radon, not a direct MI-for-this-run tool, so it isn't a
+    real substitute; scoped honestly to Python-only rather than adding an
+    unverified JS tool. Two real findings from actually running it, not
+    just inspecting the code: (a) `def add(a, b): return a + b` scores
+    88.6, not the 100.0 a naive guess would assume -- radon's Halstead-
+    Volume term is sensitive even to trivial code, so tests assert the
+    real observed number, not a rounded guess: (b) the original
+    `if not files: return skip("no Python files found")` branch is
+    *unreachable* dead code, caught by a failing test: `detect_repo_language`
+    and `_python_files` walk the identical `repo.rglob()` with the
+    identical `EXCLUDE_DIR_PARTS` filter, so `lang == "python"` (already
+    required to reach that line) can only be true when at least one
+    non-excluded `.py` file exists -- removed rather than left as an
+    illusion of handling a case that cannot occur. Dogfooded on this
+    repo's own 62 Python files: mean MI 56.8 (grade A), correctly flags
+    `synthesis/deep_reports.py` (15.2) as the single worst-scoring file --
+    a genuinely plausible answer given that module's own job (assembling
+    every category's report section).
+38. **No resilience for a partial pipeline failure.** Raised in the same
+    security-grading pass as #33/#28: tonight's own `duplication` timeout
+    required noticing, diagnosing, and manually re-invoking just that one
+    module three times over -- something only a person watching could do.
+    Added `analyze --retry-failed`: reads the existing `run_log.json` in
+    `--out`, re-runs only the modules with `status == "error"` (ignores
+    `--modules`/`--skip-slow`, since the whole point is "just the ones
+    that failed"), and merges the result back in -- every other module's
+    prior recorded outcome is left untouched, not silently dropped or
+    forced to re-run. Verified with a real, deterministic, fast-failing
+    module (`pdf` without `deep_reports` having run first) rather than
+    needing a slow/subprocess-heavy one just to have something fail on
+    demand.
