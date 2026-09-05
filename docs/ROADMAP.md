@@ -64,20 +64,24 @@ need to change).
 
 ## Recurring / CI-integrated runs
 
-Not yet built. The goal this serves: catching regressions (a newly-ungated repo, a newly-committed
-secret, a mutation score that dropped) as they happen, not only when someone remembers to run this
-tool by hand — and doing it both for a single repo's own CI and across a whole portfolio like
-`posx` or `chronicle_button`'s `button` estate.
+**Built**: `.github/workflows/analyze-reusable.yml`, a `workflow_call` reusable workflow a target
+repo (or portfolio-meta-repo) invokes on a `schedule:` cron and/or via `workflow_run` after its own
+E2E workflow completes — see README's "Recurring analysis" section for the exact caller snippets.
+Caches `analyses/` between runs (`actions/cache`, private to the calling repo — never a public
+artifact or a commit, since that output carries real secret-scan/CVE data) so `trends.py` has a
+prior baseline from the second run onward.
 
-Planned shape: a reusable GitHub Actions workflow this repo publishes (`workflow_call` trigger) that
-a target repo or portfolio-meta-repo's own CI can invoke two ways — on a `schedule:` cron, and via
-`workflow_run` after that repo's own E2E workflow completes. Both feed the same `--out` dir run over
-run, so the existing `trends.py` (regressions/improvements vs. the last run in the same `--out`
-dir) already has the mechanism to surface "this got worse since last run" — recurring invocation is
-what actually exercises it. `trends.py` today diffs portfolio-wide numbers; whether it also needs a
+**Verified**: YAML validity, correct `workflow_call` input/output structure, and the embedded shell
+is `shellcheck`-clean (including a fix for interpolating `${{ inputs.* }}` directly into `run:`
+script text — GitHub's own documented script-injection anti-pattern, caught by rerunning shellcheck
+after writing it; now passed via `env:` instead, matching this codebase's existing "no unsanitized
+input into a shell string" rule).
+
+**Not verified, stated plainly**: never executed on a live GitHub Actions runner from this
+environment (no sandboxed runner available here) — untested against a real caller workflow. Do
+that before relying on it in production.
+
+**Still open**: `trends.py` today diffs portfolio-wide numbers only. Whether it also needs a
 per-repo-digest-aware diff (this specific repo's mutation score dropped, not just the portfolio
-mean) is a real open question for whoever picks this up, not assumed solved by this note.
-
-Acceptance bar: the reusable workflow actually runs (a real invocation from a real caller
-workflow, not a dry-run/lint of the YAML) and produces a second data point in `trends.py`'s output
-for a target that already has one prior run.
+mean) is a real open question for whoever picks this up next, not assumed solved by this workflow
+existing.

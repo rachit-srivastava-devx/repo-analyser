@@ -101,15 +101,50 @@ flowchart LR
     EcoOut --> Trends["trends.py --\nvs. last run"]
     RepoOut --> Trends
 
-    Trigger["Recurring trigger <i>(planned)</i>:\ncron + post-e2e CI hook"] -.-> Collectors
-
-    classDef planned stroke-dasharray: 5 5
-    class Trigger planned
+    Trigger["Recurring trigger:\ncron + post-e2e CI hook\n(analyze-reusable.yml)"] -.-> Collectors
 ```
 
 Both views read the same `--out` dir and re-run independently
 (`--modules per_repo_digest` regenerates just the per-repo pages; `--modules deep_reports,exec_deck,pdf`
 regenerates just the ecosystem PDF) — neither re-scans anything the other needs.
+
+## Recurring analysis (scheduled or post-E2E)
+
+`.github/workflows/analyze-reusable.yml` is a reusable workflow (`workflow_call`) any repo can
+invoke on a schedule and/or right after its own E2E suite finishes, so regressions (a newly-ungated
+repo, a newly-committed secret, a dropped mutation score) show up in `trends.py`'s next run instead
+of only when someone remembers to run this by hand. It caches `analyses/` between runs
+(`actions/cache`, private to the calling repo) so there's a prior baseline to diff against from the
+second run onward.
+
+A calling repo adds one of these (not files in *this* repo):
+
+```yaml
+# .github/workflows/scheduled-analysis.yml -- weekly
+on:
+  schedule: [{cron: "0 6 * * 1"}]
+  workflow_dispatch: {}
+jobs:
+  analyze:
+    uses: rachit-srivastava-devx/repo-analyser/.github/workflows/analyze-reusable.yml@main
+    with:
+      modules: "" # full run; see list-modules for a lighter subset
+
+# .github/workflows/post-e2e-analysis.yml -- right after the E2E suite passes
+on:
+  workflow_run:
+    workflows: ["E2E Tests"] # your own E2E workflow's `name:`
+    types: [completed]
+jobs:
+  analyze:
+    if: github.event.workflow_run.conclusion == 'success'
+    uses: rachit-srivastava-devx/repo-analyser/.github/workflows/analyze-reusable.yml@main
+```
+
+**Verification limit, stated plainly**: this reusable workflow is checked for YAML validity and
+correct `workflow_call` structure, and its embedded shell passes `shellcheck` clean — it has not
+been exercised on a live GitHub Actions runner from this environment (no sandboxed Actions runner
+available here). Test it against a real caller workflow before relying on it in production.
 
 ## Design system
 

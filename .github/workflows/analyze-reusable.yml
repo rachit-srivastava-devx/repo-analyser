@@ -1,0 +1,113 @@
+name: Repo Analyser (reusable)
+
+# Reusable workflow so a target repo (or a portfolio's own CI) can run this
+# tool against itself on a schedule and/or right after its own E2E suite
+# completes -- see README's "Recurring analysis" section for the two
+# trigger patterns a caller repo actually adds. This file only runs when
+# invoked via `uses:` (workflow_call); it never triggers on its own.
+#
+# Caches analyses/<key>/ between runs (actions/cache, private to the
+# calling repo -- never uploaded/exposed) so trends.py has a prior baseline
+# to diff against on the *second* recurring run onward. `analyses/` output
+# always includes real secret-scan fragments and CVE data (see README's
+# Security model) -- that's exactly why this uses the cache action (private
+# storage scoped to this repo) rather than committing output or uploading
+# it as a public artifact.
+
+on:
+  workflow_call:
+    inputs:
+      target:
+        description: >-
+          Path, relative to the calling repo's checkout root, to analyze --
+          a single repo (".") or a directory of repos (a portfolio).
+        required: false
+        type: string
+        default: "."
+      modules:
+        description: >-
+          Comma-separated module subset (see `repo-analyser list-modules`).
+          Empty means the full run. Mutation testing is included by default;
+          drop it from this list for a recurring/scheduled run if the
+          caller repo can't tolerate the mutmut macOS fork-safety caveat
+          documented in this repo's README (Linux CI runners are unaffected).
+        required: false
+        type: string
+        default: ""
+    outputs:
+      report_path:
+        description: Path (in the uploaded artifact) to REPORT.md
+        value: ${{ jobs.analyze.outputs.report_path }}
+
+jobs:
+  analyze:
+    runs-on: ubuntu-latest
+    outputs:
+      report_path: ${{ steps.run.outputs.report_path }}
+    steps:
+      - name: Checkout repo-analyser
+        uses: actions/checkout@v4
+        with:
+          repository: rachit-srivastava-devx/repo-analyser
+          path: .repo-analyser-tool
+
+      - name: Checkout target
+        uses: actions/checkout@v4
+        with:
+          path: target-checkout
+          fetch-depth: 0 # full history -- escape/churn/effort need real git log, not a shallow clone
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.21"
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Restore prior run (for trends.py)
+        uses: actions/cache@v4
+        with:
+          path: .repo-analyser-tool/analyses/ci-run
+          key: repo-analyser-${{ github.repository }}-${{ inputs.target }}-${{ github.run_id }}
+          restore-keys: |
+            repo-analyser-${{ github.repository }}-${{ inputs.target }}-
+
+      - name: Install repo-analyser
+        working-directory: .repo-analyser-tool
+        run: |
+          pip install -e ".[dev]"
+          bash scripts/setup.sh
+
+      - name: Run analysis
+        id: run
+        working-directory: .repo-analyser-tool
+        # TARGET/MODULES come in via env:, not spliced into this script's
+        # text via ${{ }} -- inputs.* substituted directly into `run:` is
+        # GitHub's own documented script-injection anti-pattern (a value
+        # becomes literal script text, not shell data). Same "no
+        # unsanitized input into a shell string" rule this repo's own
+        # collectors already follow (AGENTS.md's edge-case ladder).
+        env:
+          TARGET: ${{ inputs.target }}
+          MODULES: ${{ inputs.modules }}
+        run: |
+          MODULES_ARG=()
+          if [ -n "$MODULES" ]; then MODULES_ARG=(--modules "$MODULES"); fi
+          .venv/bin/repo-analyser analyze \
+            "$GITHUB_WORKSPACE/target-checkout/$TARGET" \
+            --out analyses/ci-run "${MODULES_ARG[@]}"
+          echo "report_path=analyses/ci-run/REPORT.md" >> "$GITHUB_OUTPUT"
+
+      - name: Upload report artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: repo-analyser-report
+          path: .repo-analyser-tool/analyses/ci-run
+          retention-days: 90
