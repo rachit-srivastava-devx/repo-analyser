@@ -42,7 +42,7 @@ own code.
 | `lint_quality` | Static analysis with each repo's own linter/config | ESLint (JS), [ruff](https://github.com/astral-sh/ruff) (Python), [staticcheck](https://staticcheck.dev/) (Go) |
 | `code_quality` | Keyless SonarQube-style Maintainability Index (Python only) | [radon](https://radon.readthedocs.io/) |
 | `mutation` | Are the tests behaviorally meaningful, not just passing | [Stryker](https://stryker-mutator.io/) (JS/TS), [mutmut](https://mutmut.readthedocs.io/) (Python) |
-| `performance` *(planned — not yet built, see [`docs/ROADMAP.md`](docs/ROADMAP.md))* | Does a latency/perf budget exist, and does the repo's own benchmark suite pass it | k6/Lighthouse CI/bundlesize budget detection + real benchmark execution where one exists |
+| `performance` | Does a latency/perf budget exist, and is it wired into CI (detection only — no benchmark execution yet, see [`docs/ROADMAP.md`](docs/ROADMAP.md)) | Lighthouse CI / bundlesize / size-limit / artillery config + CI-wiring detection |
 | `knowledge_graph` | A real, exportable graph (duplication + shared-dep + coupling + import edges) | [networkx](https://networkx.org/) → GraphML |
 | `synthesize` | Composite risk ranking across every dimension above | this repo |
 | `per_repo_digest` | One consolidated page per repo, pulling its own findings across every module above | this repo |
@@ -79,10 +79,9 @@ the other):
 
 ```mermaid
 flowchart LR
-    subgraph Collectors["24 collector modules -- one external tool each"]
+    subgraph Collectors["19 collector modules -- one measured dimension each"]
         direction TB
-        Existing["inventory, ci_gates, complexity,\nsecurity, testquality, mutation,\nduplication, deps_audit, ... (24 today)"]
-        Perf["performance <i>(planned)</i>"]
+        Existing["inventory, ci_gates, complexity,\nsecurity, testquality, mutation,\nduplication, deps_audit, performance, ..."]
     end
 
     Collectors --> Data[("CSV / JSON per module,\nrepo-tagged rows")]
@@ -105,7 +104,7 @@ flowchart LR
     Trigger["Recurring trigger <i>(planned)</i>:\ncron + post-e2e CI hook"] -.-> Collectors
 
     classDef planned stroke-dasharray: 5 5
-    class Perf,Trigger planned
+    class Trigger planned
 ```
 
 Both views read the same `--out` dir and re-run independently

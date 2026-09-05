@@ -40,9 +40,10 @@ categories per repo, not a full per-category-per-repo matrix (15 categories × 2
 for `posx` alone, and × 180 for the `button` portfolio — that explosion answers a question nobody
 asked). Sections, in order: CI gate status, coding (complexity hotspots, lint, maintainability —
 this repo's rows only), testing & mutation (this repo's own run + score), security (this repo's own
-secrets/semgrep findings, real file:line), performance/latency budget (new dimension, ADR pending —
-see `docs/ROADMAP.md`; the section renders `_not yet measured_` until that collector exists, per
-ADR-0001's fail-loud-not-silent rule — never silently omitted), duplication involvement (is this
+secrets/semgrep findings, real file:line), performance/latency budget (`performance.py` — budget
+declared + CI-wiring, no benchmark execution yet, see `docs/ROADMAP.md`; this section renders
+`_not yet measured_` only when the module hasn't run at all, per ADR-0001's fail-loud-not-silent
+rule — never silently omitted), duplication involvement (is this
 repo a party to a cross-repo clone or exact-duplicate group — direct input to "which components are
 merge-into-a-shared-library candidates"), escape rate, dependency CVEs, and an "Honest limitations"
 section matching `deep_reports.py`'s own convention.

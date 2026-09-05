@@ -61,10 +61,7 @@ class _AllData:
         self.exact_duplicates = _read_csv(data_dir / "exact_duplicate_files.csv")
         self.escapes = _read_csv(data_dir / "escapes.csv")
         self.deps_cves = _read_csv(data_dir / "deps_cves.csv")
-        # Performance/latency budget: no collector writes this yet (see
-        # docs/ROADMAP.md) -- absence is reported explicitly below, never
-        # silently skipped, per ADR-0001.
-        self.performance = _read_csv(data_dir / "performance_summary.csv")
+        self.performance = _read_csv(data_dir / "performance.csv")
 
 
 def _section_header(repo_name: str, data: _AllData, target_name: str) -> str:
@@ -177,12 +174,17 @@ def _section_performance(repo_name: str, data: _AllData) -> str:
     rows = _for_repo(data.performance, repo_name)
     if not rows:
         return ("## Performance / latency budget\n\n"
-                "_Not yet measured -- no `performance` module has run for this target. "
-                "See `docs/ROADMAP.md` for the planned collector (benchmark execution + "
-                "budget-config detection). This is stated explicitly rather than omitted, "
-                "per ADR-0001's fail-loud-not-silent rule._\n")
+                "_Not yet measured -- the `performance` module has not run for this target._\n")
     r = rows[0]
-    return f"## Performance / latency budget\n\n{r}\n"  # shape TBD when the collector lands
+    if r.get("has_budget_config") != "True":
+        return (f"## Performance / latency budget\n\n"
+                f"No performance budget declared -- {r.get('skip_reason', 'none configured')}.\n")
+    ci_note = "wired into CI" if r.get("wired_into_ci") == "True" else \
+        "**not wired into CI** -- config exists but nothing runs it automatically"
+    return (f"## Performance / latency budget\n\n"
+            f"Budget declared via **{r.get('budget_tool', '?')}** "
+            f"(detected via {r.get('detected_via', '?')}), {ci_note}. "
+            f"Detection only for now -- no benchmark is executed yet (see `docs/ROADMAP.md`).\n")
 
 
 def _section_duplication_involvement(repo_name: str, data: _AllData) -> str:

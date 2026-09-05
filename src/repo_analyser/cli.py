@@ -27,8 +27,8 @@ from .core.util import discover_repos, read_json, write_json
 MODULES = [
     "inventory", "ci_gates", "ontology", "effort", "escape", "churn", "complexity",
     "duplication", "exact_duplicates", "security", "depgraph", "testquality", "e2e_quality",
-    "deps_audit", "supply_chain", "lint_quality", "code_quality", "mutation", "knowledge_graph",
-    "synthesize", "per_repo_digest", "trends", "deep_reports", "exec_deck", "pdf",
+    "performance", "deps_audit", "supply_chain", "lint_quality", "code_quality", "mutation",
+    "knowledge_graph", "synthesize", "per_repo_digest", "trends", "deep_reports", "exec_deck", "pdf",
 ]
 SLOW_MODULES = {"escape", "churn", "complexity", "duplication", "exact_duplicates", "security", "depgraph",
                  "testquality", "deps_audit", "supply_chain", "lint_quality", "mutation"}
@@ -73,6 +73,9 @@ def run_module(name: str, repos: list[Path], target: Path, out_dir: Path, tmp_di
         elif name == "e2e_quality":
             from .collectors.e2e_quality import run_e2e_quality
             run_e2e_quality(repos, out_dir)
+        elif name == "performance":
+            from .collectors.performance import run_performance
+            run_performance(repos, out_dir)
         elif name == "knowledge_graph":
             from .graph.knowledge_graph import run_knowledge_graph
             run_knowledge_graph(out_dir, target, out_dir)

@@ -38,34 +38,29 @@ argues against.
 
 ## Runtime performance / latency budget collector (`performance.py`)
 
-Not yet built. Confirmed absent via full-codebase grep (2026-09-05): the only near-miss hits are
-`ontology.py`'s commit-message classifier (labels a commit "perf" if its message mentions
-performance/latency — never measures anything) and `escape.py`'s "fix latency" (calendar days a bug
-lived before a fix — a defect-lifecycle metric, not application runtime latency). Nothing in this
-codebase runs a benchmark, a load test, or reads a performance budget for any *target* repo.
+**Detection built** (ADR-0003 slice): `performance.py` detects a declared budget (Lighthouse CI /
+bundlesize / size-limit / artillery config or dependency) and whether it's wired into CI, mirroring
+`e2e_quality.py`'s presence-only shape (`docs/ARCHITECTURE.md`'s "one collector = one external tool"
+rule, ADR-0002) — writes `performance.csv`/`performance_summary.json`, read by
+`per_repo_digest.py`'s `_AllData.performance`. Before this, confirmed absent via full-codebase grep
+(2026-09-05): the only near-miss hits were `ontology.py`'s commit-message classifier (labels a
+commit "perf" if its message mentions performance/latency — never measures anything) and
+`escape.py`'s "fix latency" (calendar days a bug lived before a fix — a defect-lifecycle metric, not
+application runtime latency).
 
-Real tools to wrap, following this codebase's existing "one collector = one external tool" rule
-(ADR-0002) and its "presence + CI-wiring, not full live execution" precedent (`e2e_quality.py`
-already does exactly this for E2E suites rather than actually driving a browser):
+**Still open: real benchmark execution.** `performance.py` only answers "is a budget declared and
+enforced in CI" — it never runs one. Matching `testquality.py`'s "actually run it" philosophy (same
+timeout discipline via `core.util.run()`): Go's `go test -bench=. -benchmem`, Python's
+`pytest-benchmark` (only if the target already depends on it — never installed by this tool into a
+target repo), JS/TS benchmark frameworks (`vitest bench`, `tinybench`). Report real numbers (ns/op,
+allocations) as new columns on the same `performance.csv`, keeping the `repo` column every other
+collector's CSV already has.
 
-- **Budget presence + CI-wiring** (the safe default, mirrors `e2e_quality.py`): detect a Lighthouse
-  CI config (`.lighthouserc.js`/`.json` with `assertions`), a `k6`/`artillery`/`autocannon` script,
-  or a bundlesize/`size-limit` config — and whether it's wired into CI (same
-  `.github/workflows` parsing `ci_gates.py` already does). No live server required.
-- **Real benchmark execution where one already exists** (matches `testquality.py`'s "actually run
-  it" philosophy, same timeout discipline via `core.util.run()`): Go's `go test -bench=. -benchmem`,
-  Python's `pytest-benchmark` (only if the target already depends on it — never installed by this
-  tool into a target repo), JS/TS benchmark frameworks (`vitest bench`, `tinybench`). Report real
-  numbers (ns/op, allocations) with a `repo` column like every other collector's CSV.
-- Absence of any of the above is an explicit `skipped_reason` ("no benchmark suite or budget config
-  found"), never a silently empty result (ADR-0001) — this is exactly the gap
-  `per_repo_digest.py`'s `_section_performance` already renders explicitly (ADR-0003) pending this
-  collector.
-
-Acceptance bar: run against a real target that has an actual benchmark suite (not a fixture) and
-show the real numbers landing in `performance_summary.csv`, then confirm `per_repo_digest.py`'s
-performance section picks them up without any change to that file (it already reads
-`performance_summary.csv` by convention — see `_AllData.performance`).
+Acceptance bar for the execution half: run against a real target that has an actual benchmark suite
+(not a fixture) and show the real numbers landing in `performance.csv`, then confirm
+`per_repo_digest.py`'s performance section picks them up with only an additive change to
+`_section_performance` (the budget-detection half of that section is already live and shouldn't
+need to change).
 
 ## Recurring / CI-integrated runs
 
