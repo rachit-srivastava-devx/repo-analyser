@@ -35,8 +35,8 @@ regenerate just the report layer from data already on disk, with no re-scan.
 | `core/` | `util.py` (subprocess exec, repo discovery, CSV/JSON I/O, `ToolExecutionError`, `repo_root()`), `lang.py` (language detection, per-module support sets) | nothing else in this package | Every other subpackage depends on this one. This one depends on nothing else here. |
 | `collectors/` | One module per measured dimension (`inventory`, `ci_gates`, `ontology`, `escape`, `churn`, `complexity`, `duplication`, `exact_duplicates`, `security`, `depgraph`, `testquality`, `deps_audit`, `lint_quality`, `mutation`, `effort`) | `core/` (+ `ontology.classify_commit` is imported directly by `escape.py` — the one sibling-to-sibling import in the package, because SZZ needs the same commit classification ontology uses) | One collector = one external tool (or git itself) = one CSV/JSON. Never silently empty — raise or `skipped_reason`. |
 | `graph/` | `knowledge_graph.py` — assembles a networkx `MultiDiGraph` from collectors' CSVs (duplication, shared-dependency, coupling edges) and exports GraphML | `core/`, reads collectors' output files (not their code) | Pure assembly. Re-scans nothing. |
-| `synthesis/` | `synthesize.py` (composite risk ranking), `deep_reports.py` (13 per-category markdown reports, `REPORT_SEQUENCE` defines narrative order — never alphabetical), `exec_deck.py` (capstone briefing spec) | `core/`, `reporting/charts` (deep_reports embeds chart PNGs), reads every collector's output | Computes *across* dimensions. No external tool calls here — if you're calling `subprocess`, the code belongs in `collectors/`, not here. |
-| `reporting/` | `charts.py` (matplotlib, DevX Doctrine tokens), `pdf_export.py` (markdown → HTML → WeasyPrint, embeds `fonts/`), `report.py` (the plain `REPORT.md` summary, distinct from `deep_reports`'s 13-file suite) | `core/`; `pdf_export.py` imports `synthesis.deep_reports.REPORT_SEQUENCE` to order sections | Presentation only — no analysis logic lives here. |
+| `synthesis/` | `synthesize.py` (composite risk ranking), `deep_reports.py` (15 per-category markdown reports, `REPORT_SEQUENCE` defines narrative order — never alphabetical), `exec_deck.py` (capstone briefing spec), `per_repo_digest.py` (one consolidated page per repo — ADR-0003, portfolio-wide vs. per-repo is a deliberate split, not overlap) | `core/`, `reporting/charts` (deep_reports embeds chart PNGs), reads every collector's output | Computes *across* dimensions. No external tool calls here — if you're calling `subprocess`, the code belongs in `collectors/`, not here. |
+| `reporting/` | `charts.py` (matplotlib, DevX Doctrine tokens), `pdf_export.py` (markdown → HTML → WeasyPrint, embeds `fonts/`), `report.py` (the plain `REPORT.md` summary, distinct from `deep_reports`'s 15-file suite) | `core/`; `pdf_export.py` imports `synthesis.deep_reports.REPORT_SEQUENCE` to order sections | Presentation only — no analysis logic lives here. |
 
 ## Why this split (not "one flat `chronicle/` folder of 25 files")
 
@@ -102,3 +102,19 @@ invocation tool to silently take on, and not attempted here.
 3. Add the dispatch branch in `cli.py`'s `run_module()`.
 4. Add a row to the module table in `README.md`.
 5. Add a `tests/collectors/test_<name>.py` with at least: empty input, the tool missing/failing, and one real-shape success case.
+
+## Adding a per-repo digest section (ADR-0003)
+
+For a new fact about an individual repo, not a new collector:
+
+1. Add a `_section_<name>(repo_name, data, ...)` function in `synthesis/per_repo_digest.py`,
+   filtering the relevant CSV(s) already loaded in `_AllData` by `repo` (or by whatever column
+   identifies that repo — `duplication_clones.csv`'s `repo_a`/`repo_b`, `exact_duplicate_files.csv`'s
+   `;`-joined `repos`).
+2. Call it from `render_repo_digest`, in narrative order (most decision-relevant first — this is a
+   consolidated page someone reads top to bottom, not a reference dump).
+3. If the data doesn't exist yet (a planned-but-unbuilt collector, e.g. `performance`), render an
+   explicit "not yet measured" line, never a silently-omitted section — same rule as everywhere
+   else in this codebase (ADR-0001).
+4. Add tests in `tests/synthesis/test_per_repo_digest.py`: the section renders with real data, and
+   degrades gracefully with none.

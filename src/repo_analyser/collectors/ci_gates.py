@@ -26,6 +26,12 @@ TEST_COMMAND_PATTERNS = [
     r"\bnpm\s+(run\s+)?test\b", r"\byarn\s+test\b", r"\bpnpm\s+(run\s+)?test\b",
     r"\bvitest\b", r"\bjest\b", r"\bmocha\b", r"\bplaywright\s+test\b",
     r"\bcypress\s+run\b", r"\bnpm\s+run\s+test:", r"\bstryker\b",
+    # Python and Go -- this list previously covered JS/TS only, so any
+    # Python/Go repo whose CI runs `pytest`/`go test` was misreported as
+    # "no workflow runs tests" (deploy-only) even when it genuinely gates on
+    # a passing suite. Caught via this tool's own ci.yml (`pytest --cov=...`)
+    # being misclassified in its own per-repo digest (docs/adr/0003).
+    r"\bpytest\b", r"\bunittest\b", r"\bgo\s+test\b",
 ]
 TEST_RE = re.compile("|".join(TEST_COMMAND_PATTERNS), re.IGNORECASE)
 

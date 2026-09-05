@@ -28,6 +28,23 @@ class TestWorkflowRunsTests:
         doc = {"jobs": {"build": {"steps": [{"run": "npm run test:unit"}]}}}
         assert _workflow_runs_tests(doc) is True
 
+    def test_pytest_run_step(self) -> None:
+        # regression: this repo's own ci.yml ("pytest --cov=...") was
+        # misclassified as not running tests until this pattern was added --
+        # the pattern list previously covered JS/TS test runners only.
+        doc = {"jobs": {"test": {"steps": [
+            {"run": "pytest --cov=repo_analyser --cov-report=term-missing --cov-report=xml"},
+        ]}}}
+        assert _workflow_runs_tests(doc) is True
+
+    def test_go_test_run_step(self) -> None:
+        doc = {"jobs": {"build": {"steps": [{"run": "go test ./..."}]}}}
+        assert _workflow_runs_tests(doc) is True
+
+    def test_unittest_run_step(self) -> None:
+        doc = {"jobs": {"build": {"steps": [{"run": "python -m unittest discover"}]}}}
+        assert _workflow_runs_tests(doc) is True
+
     def test_deploy_only_workflow_has_no_test_step(self) -> None:
         doc = {"jobs": {"deploy": {"steps": [{"run": "docker build -t app ."},
                                               {"run": "aws ecs update-service"}]}}}

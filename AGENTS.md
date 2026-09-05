@@ -128,6 +128,14 @@ For every function you write or touch, walk this out loud and handle or dismiss 
   variation that actually needs it.
 - **Naming is a design act.** A module is named for the *dimension it measures*
   (`exact_duplicates`, not `dupes2` or `hash_check`).
+- **`synthesis/` has two kinds of output — don't blur them (ADR-0003).** `deep_reports.py`/
+  `exec_deck.py` answer "how does the whole target look" (portfolio-wide, cross-repo);
+  `per_repo_digest.py` answers "what's true about *this* repo" (one page, filtered to that repo's
+  own rows). A new cross-repo insight (another duplication-style comparison, another portfolio
+  aggregate) is a new `REPORT_SEQUENCE` entry in `deep_reports.py`. A new fact about an individual
+  repo that a per-repo reader would want on one page is a new section in
+  `per_repo_digest.py`'s `render_repo_digest`. Neither file should grow the other's kind of
+  section — that's exactly the ambiguity ADR-0003 exists to close.
 
 ---
 

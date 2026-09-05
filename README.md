@@ -42,8 +42,10 @@ own code.
 | `lint_quality` | Static analysis with each repo's own linter/config | ESLint (JS), [ruff](https://github.com/astral-sh/ruff) (Python), [staticcheck](https://staticcheck.dev/) (Go) |
 | `code_quality` | Keyless SonarQube-style Maintainability Index (Python only) | [radon](https://radon.readthedocs.io/) |
 | `mutation` | Are the tests behaviorally meaningful, not just passing | [Stryker](https://stryker-mutator.io/) (JS/TS), [mutmut](https://mutmut.readthedocs.io/) (Python) |
+| `performance` *(planned — not yet built, see [`docs/ROADMAP.md`](docs/ROADMAP.md))* | Does a latency/perf budget exist, and does the repo's own benchmark suite pass it | k6/Lighthouse CI/bundlesize budget detection + real benchmark execution where one exists |
 | `knowledge_graph` | A real, exportable graph (duplication + shared-dep + coupling + import edges) | [networkx](https://networkx.org/) → GraphML |
 | `synthesize` | Composite risk ranking across every dimension above | this repo |
+| `per_repo_digest` | One consolidated page per repo, pulling its own findings across every module above | this repo |
 | `trends` | Regressions/improvements vs. the last run against this same `--out` dir | this repo |
 | `deep_reports` | One markdown report per category, full depth | this repo |
 | `exec_deck` | One capstone "Slide N" briefing spec spanning every category | this repo |
@@ -62,6 +64,53 @@ own code.
   `codebase-memory-mcp`, not a subprocess this tool runs — see **Limitations**.
 - Full formula behind every number, plus real bugs found and fixed while building this:
   [`docs/METHODOLOGY.md`](docs/METHODOLOGY.md). Design decisions: [`docs/adr/`](docs/adr/).
+
+## Architecture at a glance
+
+Two report views come out of the same collector data, answering two different questions (see
+[ADR-0003](docs/adr/0003-per-repo-digest-reports.md) for why both exist rather than one replacing
+the other):
+
+- **Ecosystem view** (existing): `deep_reports.py`/`exec_deck.py`/the PDF — "how does the whole
+  portfolio look, and how are these repos connected" (cross-repo duplication, shared dependencies,
+  risk ranking).
+- **Per-repo view** (new): `per_repo_digest.py` — "what's true about *this one* repo," in one page,
+  whether the target is a 26-repo portfolio or this tool analyzing itself.
+
+```mermaid
+flowchart LR
+    subgraph Collectors["24 collector modules -- one external tool each"]
+        direction TB
+        Existing["inventory, ci_gates, complexity,\nsecurity, testquality, mutation,\nduplication, deps_audit, ... (24 today)"]
+        Perf["performance <i>(planned)</i>"]
+    end
+
+    Collectors --> Data[("CSV / JSON per module,\nrepo-tagged rows")]
+
+    Data --> Synthesize["synthesize.py\ncomposite risk ranking"]
+    Synthesize --> Risk[("risk_ranking.csv")]
+
+    Data --> Ecosystem["deep_reports.py + exec_deck.py\n15 portfolio-wide reports"]
+    Risk --> Ecosystem
+    Ecosystem --> PDF["pdf_export.py"]
+    PDF --> EcoOut(["Ecosystem PDF --\nhow repos connect"])
+
+    Data --> PerRepo["per_repo_digest.py"]
+    Risk --> PerRepo
+    PerRepo --> RepoOut(["One digest per repo +\nPER_REPO_INDEX.md"])
+
+    EcoOut --> Trends["trends.py --\nvs. last run"]
+    RepoOut --> Trends
+
+    Trigger["Recurring trigger <i>(planned)</i>:\ncron + post-e2e CI hook"] -.-> Collectors
+
+    classDef planned stroke-dasharray: 5 5
+    class Perf,Trigger planned
+```
+
+Both views read the same `--out` dir and re-run independently
+(`--modules per_repo_digest` regenerates just the per-repo pages; `--modules deep_reports,exec_deck,pdf`
+regenerates just the ecosystem PDF) — neither re-scans anything the other needs.
 
 ## Design system
 
