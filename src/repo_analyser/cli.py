@@ -28,7 +28,7 @@ MODULES = [
     "inventory", "ci_gates", "ontology", "effort", "escape", "churn", "complexity",
     "duplication", "exact_duplicates", "security", "depgraph", "testquality", "e2e_quality",
     "performance", "deps_audit", "supply_chain", "lint_quality", "code_quality", "mutation",
-    "knowledge_graph", "synthesize", "per_repo_digest", "trends", "deep_reports", "exec_deck", "pdf",
+    "knowledge_graph", "synthesize", "trends", "per_repo_digest", "deep_reports", "exec_deck", "pdf",
 ]
 SLOW_MODULES = {"escape", "churn", "complexity", "duplication", "exact_duplicates", "security", "depgraph",
                  "testquality", "deps_audit", "supply_chain", "lint_quality", "mutation"}
@@ -107,7 +107,7 @@ def run_module(name: str, repos: list[Path], target: Path, out_dir: Path, tmp_di
                                  target.resolve().name)
         elif name == "trends":
             from .synthesis.trends import run_trends
-            run_trends(out_dir)
+            run_trends(out_dir, [r.name for r in repos])
         elif name == "deep_reports":
             from .synthesis.deep_reports import generate_all
             generate_all(out_dir, out_dir / "deep", target.resolve().name)

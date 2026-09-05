@@ -1,17 +1,28 @@
 from __future__ import annotations
 
+import csv
 import json
 from pathlib import Path
 
 from repo_analyser.core.util import write_json
 from repo_analyser.synthesis.trends import (
     BASELINE_FILENAME,
+    PER_REPO_BASELINE_FILENAME,
     TrendRow,
     _classify,
+    compare_per_repo_to_baseline,
     compare_to_baseline,
     extract_metrics,
+    extract_per_repo_metrics,
     run_trends,
 )
+
+
+def _write_csv(path: Path, rows: list[dict]) -> None:
+    with open(path, "w", newline="") as f:
+        w = csv.DictWriter(f, fieldnames=list(rows[0].keys()))
+        w.writeheader()
+        w.writerows(rows)
 
 
 class TestExtractMetrics:
@@ -129,3 +140,73 @@ class TestRunTrends:
         run_trends(tmp_path)
         baseline = json.loads((tmp_path / BASELINE_FILENAME).read_text())
         assert baseline["secrets_found"] == 2
+
+    def test_repo_names_none_skips_per_repo_output_backward_compat(self, tmp_path: Path) -> None:
+        run_trends(tmp_path)  # no repo_names -- old call-site shape
+        assert not (tmp_path / "trend_report_per_repo.json").exists()
+        assert not (tmp_path / PER_REPO_BASELINE_FILENAME).exists()
+
+    def test_repo_names_given_writes_per_repo_report_and_baseline(self, tmp_path: Path) -> None:
+        _write_csv(tmp_path / "risk_ranking.csv", [
+            {"repo": "r", "risk_score": "0.5", "escape_count": "0", "top5_hotspot_sum": "0",
+             "exact_dup_file_count": "0", "ci_gate_missing": "False", "test_failure_rate": "0",
+             "security_findings": "0", "bus_factor_top_author_share": "0"},
+        ])
+        run_trends(tmp_path, ["r"])
+        report = json.loads((tmp_path / "trend_report_per_repo.json").read_text())
+        assert "r" in report
+        assert any(m["metric"] == "risk_score" and m["direction"] == "new" for m in report["r"]["metrics"])
+        baseline = json.loads((tmp_path / PER_REPO_BASELINE_FILENAME).read_text())
+        assert baseline["r"]["risk_score"] == 0.5
+
+
+class TestExtractPerRepoMetrics:
+    def test_missing_csvs_all_none(self, tmp_path: Path) -> None:
+        metrics = extract_per_repo_metrics(tmp_path, ["r"])
+        assert all(v is None for v in metrics["r"].values())
+
+    def test_pulls_real_values_from_risk_ranking(self, tmp_path: Path) -> None:
+        _write_csv(tmp_path / "risk_ranking.csv", [
+            {"repo": "r", "risk_score": "0.7", "escape_count": "3", "top5_hotspot_sum": "100",
+             "exact_dup_file_count": "2", "ci_gate_missing": "True", "test_failure_rate": "0.1",
+             "security_findings": "5", "bus_factor_top_author_share": "0.9"},
+        ])
+        metrics = extract_per_repo_metrics(tmp_path, ["r"])["r"]
+        assert metrics["risk_score"] == 0.7
+        assert metrics["security_findings"] == 5.0
+
+    def test_mutation_score_only_counted_when_ran_true(self, tmp_path: Path) -> None:
+        _write_csv(tmp_path / "mutation_results.csv", [
+            {"repo": "r", "file_mutated": "", "total_mutants": "0", "killed": "0", "survived": "0",
+             "no_coverage": "0", "timeout": "0", "mutation_score": "0", "ran": "False",
+             "skip_reason": "no passing suite", "suspicious": "0", "segfault": "0"},
+        ])
+        metrics = extract_per_repo_metrics(tmp_path, ["r"])["r"]
+        assert metrics["mutation_score"] is None
+
+    def test_repo_not_in_csv_gets_all_none(self, tmp_path: Path) -> None:
+        _write_csv(tmp_path / "risk_ranking.csv", [
+            {"repo": "other", "risk_score": "0.5", "escape_count": "0", "top5_hotspot_sum": "0",
+             "exact_dup_file_count": "0", "ci_gate_missing": "False", "test_failure_rate": "0",
+             "security_findings": "0", "bus_factor_top_author_share": "0"},
+        ])
+        metrics = extract_per_repo_metrics(tmp_path, ["untouched"])["untouched"]
+        assert all(v is None for v in metrics.values())
+
+
+class TestComparePerRepoToBaseline:
+    def test_real_regression_detected_for_one_repo_not_the_whole_portfolio(self, tmp_path: Path) -> None:
+        write_json(tmp_path / PER_REPO_BASELINE_FILENAME, {"risky": {"risk_score": 0.2}, "safe": {"risk_score": 0.1}})
+        _write_csv(tmp_path / "risk_ranking.csv", [
+            {"repo": "risky", "risk_score": "0.9", "escape_count": "0", "top5_hotspot_sum": "0",
+             "exact_dup_file_count": "0", "ci_gate_missing": "False", "test_failure_rate": "0",
+             "security_findings": "0", "bus_factor_top_author_share": "0"},
+            {"repo": "safe", "risk_score": "0.1", "escape_count": "0", "top5_hotspot_sum": "0",
+             "exact_dup_file_count": "0", "ci_gate_missing": "False", "test_failure_rate": "0",
+             "security_findings": "0", "bus_factor_top_author_share": "0"},
+        ])
+        result = compare_per_repo_to_baseline(tmp_path, ["risky", "safe"])
+        risky_directions = {r.metric: r.direction for r in result["risky"]}
+        safe_directions = {r.metric: r.direction for r in result["safe"]}
+        assert risky_directions["risk_score"] == "regressed"
+        assert safe_directions["risk_score"] == "unchanged"

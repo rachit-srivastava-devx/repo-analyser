@@ -11,6 +11,7 @@ follows -- nothing hardcoded from a specific run.
 from __future__ import annotations
 
 import csv
+import json
 from pathlib import Path
 
 from tabulate import tabulate
@@ -23,6 +24,12 @@ def _read_csv(path: Path) -> list[Row]:
         return []
     with open(path) as f:
         return list(csv.DictReader(f))
+
+
+def _read_json(path: Path) -> dict:
+    if not path.exists():
+        return {}
+    return json.loads(path.read_text())
 
 
 def _fnum(v, default: float = 0.0) -> float:
@@ -62,6 +69,7 @@ class _AllData:
         self.escapes = _read_csv(data_dir / "escapes.csv")
         self.deps_cves = _read_csv(data_dir / "deps_cves.csv")
         self.performance = _read_csv(data_dir / "performance.csv")
+        self.trend_per_repo = _read_json(data_dir / "trend_report_per_repo.json")
 
 
 def _section_header(repo_name: str, data: _AllData, target_name: str) -> str:
@@ -79,6 +87,24 @@ def _section_header(repo_name: str, data: _AllData, target_name: str) -> str:
             f"`CONSOLIDATION_ROADMAP.md` in the portfolio-wide reports for how this repo compares "
             f"to the rest of `{target_name}`._\n\n"
             f"**Activity tier:** {tier}\n")
+
+
+def _section_trend(repo_name: str, data: _AllData) -> str:
+    entry = data.trend_per_repo.get(repo_name)
+    if entry is None:
+        return ("## Trend\n\n"
+                "_No prior run to compare against yet -- this becomes available the second time "
+                "`trends` runs against this same `--out` dir (see `docs/ROADMAP.md`'s recurring-run "
+                "section)._\n")
+    regressions, improvements = entry.get("regressions", []), entry.get("improvements", [])
+    if not regressions and not improvements:
+        return "## Trend\n\nUnchanged since the last run.\n"
+    out = ["## Trend (vs. last run)\n"]
+    if regressions:
+        out.append(f"**Regressed:** {', '.join(regressions)}\n")
+    if improvements:
+        out.append(f"**Improved:** {', '.join(improvements)}\n")
+    return "\n".join(out)
 
 
 def _section_ci_gate(repo_name: str, data: _AllData) -> str:
@@ -234,6 +260,7 @@ def _section_escape_and_deps(repo_name: str, data: _AllData) -> str:
 def render_repo_digest(repo_name: str, data: _AllData, target_name: str) -> str:
     sections = [
         _section_header(repo_name, data, target_name),
+        _section_trend(repo_name, data),
         _section_ci_gate(repo_name, data),
         _section_coding(repo_name, data),
         _section_testing_mutation(repo_name, data),

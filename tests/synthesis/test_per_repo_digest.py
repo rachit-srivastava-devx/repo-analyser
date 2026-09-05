@@ -3,6 +3,7 @@ from __future__ import annotations
 import csv
 from pathlib import Path
 
+from repo_analyser.core.util import write_json
 from repo_analyser.synthesis.per_repo_digest import _AllData, render_repo_digest, run_per_repo_digest
 
 
@@ -23,6 +24,28 @@ class TestRenderRepoDigest:
         assert "# solo-repo" in digest
         assert "No committed secrets found" in digest
         assert "No cross-repo block-level clones" in digest
+
+    def test_no_prior_trend_data_states_why_not_silently_omitted(self, tmp_path: Path) -> None:
+        data = _AllData(tmp_path)
+        digest = render_repo_digest("new-repo", data, "myorg")
+        assert "No prior run to compare against yet" in digest
+
+    def test_trend_regression_and_improvement_both_listed(self, tmp_path: Path) -> None:
+        write_json(tmp_path / "trend_report_per_repo.json", {
+            "r": {"regressions": ["risk_score"], "improvements": ["mutation_score"], "metrics": []},
+        })
+        data = _AllData(tmp_path)
+        digest = render_repo_digest("r", data, "myorg")
+        assert "Regressed:** risk_score" in digest
+        assert "Improved:** mutation_score" in digest
+
+    def test_trend_unchanged_when_no_regressions_or_improvements(self, tmp_path: Path) -> None:
+        write_json(tmp_path / "trend_report_per_repo.json", {
+            "r": {"regressions": [], "improvements": [], "metrics": []},
+        })
+        data = _AllData(tmp_path)
+        digest = render_repo_digest("r", data, "myorg")
+        assert "Unchanged since the last run" in digest
 
     def test_repo_with_zero_findings_everywhere_renders_clean(self, tmp_path: Path) -> None:
         _write_csv(tmp_path / "security_secrets.csv", [])
