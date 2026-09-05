@@ -4,6 +4,21 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/). Every en
 reason for the change, not just what changed — recurring mistakes get a rule/ADR, not just a fix
 (see `docs/adr/`).
 
+## Unreleased
+
+- **`scripts/setup.sh` is now a real one-command setup**, not just a jar fetch. It now also
+  creates/updates `.venv`, runs `pip install -e ".[dev]"`, and installs the external scanners
+  (gitleaks, semgrep, jscpd, osv-scanner, trivy) via brew/npm when missing — checked-only (never
+  auto-installed) for Java/Node/Go, since those are language runtimes, not single CLIs. A missing
+  external scanner is reported but doesn't fail the script, mirroring the modules' own graceful
+  `skipped_reason` degradation — this also keeps `ci.yml`'s existing use of this script (on a
+  Homebrew-less `ubuntu-latest` runner) working unchanged.
+- **README restructured for scannability**: Quick start moved to the top; long prose (Requirements,
+  Security model, Operational cost) condensed to a few bullets with the full detail preserved
+  behind `<details>` rather than deleted. Fixed a stale `chronicle/collectors/mutation.py` path
+  left over from the 0.2.0 restructure below, and a stale `-chronicle-report.pdf` filename in
+  `docs/ARCHITECTURE.md`'s diagram.
+
 ## 0.2.0 — rename, restructure, and self-hardening
 
 - **Renamed** `chronicle-analyzer` / `chronicle` package → `repo-analyser` / `repo_analyser`, local

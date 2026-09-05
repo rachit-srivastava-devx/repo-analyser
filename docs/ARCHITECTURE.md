@@ -17,7 +17,7 @@ collectors/*.py  ──write──▶  <out>/*.csv, <out>/*.json   (one file per
 graph/knowledge_graph.py     synthesis/deep_reports.py  ──▶  <out>/deep/*.md  (+ reporting/charts.py PNGs)
        │                              │
        ▼                              ▼
-<out>/*.graphml            reporting/pdf_export.py  ──▶  <out>/deep/<target>-chronicle-report.pdf
+<out>/*.graphml            reporting/pdf_export.py  ──▶  <out>/deep/<target>-analysis-report.pdf
 ```
 
 Every arrow is a **file**, not a function call across subpackages at runtime beyond what's needed

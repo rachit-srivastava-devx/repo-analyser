@@ -42,7 +42,10 @@ jobs:
 
       - run: pip install -e ".[dev]"
       - run: npm install -g jscpd
-      - run: bash scripts/setup.sh  # fetches tools/code-maat.jar for churn.py
+      - run: bash scripts/setup.sh  # venv+deps already done above; this step fetches tools/code-maat.jar
+                                     # for churn.py and soft-checks gitleaks/semgrep/osv-scanner/trivy/
+                                     # staticcheck (never installable here -- no Homebrew on this runner --
+                                     # so it reports MISS and exits 0, matching the skip-comment below)
 
       # gitleaks/semgrep/osv-scanner/staticcheck are deliberately not
       # installed here: every test that would exercise them either
