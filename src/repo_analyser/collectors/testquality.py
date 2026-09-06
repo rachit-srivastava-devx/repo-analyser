@@ -1,7 +1,7 @@
 """Test quality: actually execute each repo's unit-test script and record
 real pass/fail counts -- not "a test script exists" (a proxy) but "the
-suite ran and here is what happened" (the property). Coverage is collected
-where the runner supports it out of the box.
+suite ran and here is what happened" (the property). Coverage is not
+collected today -- see docs/METHODOLOGY.md.
 
 Deliberately scoped to *unit* tests only: this portfolio's integration test
 scripts (`test:integration:*`) require live AWS/DB/Redis infrastructure this

@@ -800,3 +800,18 @@ own construction failures is less trustworthy than one that shows them.
     module (`pdf` without `deep_reports` having run first) rather than
     needing a slow/subprocess-heavy one just to have something fail on
     demand.
+39. **`testquality.py`'s own module docstring claimed a measurement it
+    never took.** It said "Coverage is collected where the runner supports
+    it out of the box" -- `TestRunResult` (the dataclass every row of
+    `testquality_runs.csv` is built from) has no coverage field, and
+    nothing in the module ever passes `--cov`, `--coverage`, or
+    `-coverprofile` to any runner. Same failure class as #21 (a claim
+    about this module's output not backed by the code that produces it),
+    just on the docstring side instead of a downstream JSON-key read. No
+    coverage artifact (`coverage.xml` / lcov / a Go cover profile) is
+    written by any collector today -- fixed here by correcting the
+    docstring, not by building the feature: collecting coverage across
+    three different runners, adding CSV columns, and updating every
+    consumer (`synthesize.py`, `deep_reports.py`, `exec_deck.py`,
+    `trends.py`) is a real feature with its own published-CSV-shape
+    sign-off (AGENTS.md §10), not a one-line correction.
