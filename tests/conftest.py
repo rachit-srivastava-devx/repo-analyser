@@ -46,6 +46,17 @@ def git_repo(tmp_path: Path) -> Path:
 
 
 @pytest.fixture
+def git_worktree(git_repo: Path, tmp_path: Path) -> Path:
+    """A real `git worktree add` checkout of `git_repo` -- its .git is a
+    *file* (containing "gitdir: ..."), not a directory, unlike a normal
+    clone. Regression fixture for the is_git_repo/discover_repos bug where
+    such paths were rejected outright."""
+    worktree = tmp_path / "sample_worktree"
+    _git(git_repo, "worktree", "add", "-q", str(worktree), "-b", "wt-branch")
+    return worktree
+
+
+@pytest.fixture
 def git_portfolio(tmp_path: Path) -> Path:
     """A directory of 2 independent git repos as immediate children -- the
     portfolio shape discover_repos must also accept."""
