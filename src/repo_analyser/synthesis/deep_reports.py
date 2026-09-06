@@ -85,6 +85,24 @@ def repo_analysis(data_dir: Path, charts_dir: Path, target_name: str) -> str:
                       ("aging", "1-3yr"), ("dormant", ">3yr")]],
     )
 
+    # A second, independently-thresholded bucketing of the same last-commit
+    # data (see collectors/inventory/staleness_band.py) -- coarser bands
+    # aimed at fleet-wide neglect tracking rather than the tiers above.
+    # r.get(...) or "unknown" folds both a missing column (older CSVs) and
+    # an empty-string cell (write_csv's rendering of a Python None) into the
+    # same "unknown" bucket, matching staleness_band()'s own None contract.
+    bands: dict[str, list[Row]] = defaultdict(list)
+    for r in inv:
+        bands[r.get("staleness_band") or "unknown"].append(r)
+    band_defs = [("fresh", "<30 days since last commit"), ("aging", "30-90d"),
+                 ("stale", "91d-1yr"), ("abandoned", ">1yr")]
+    if bands.get("unknown"):
+        band_defs.append(("unknown", "missing/unusable last-commit data"))
+    band_table = _md_table(
+        ["Band", "Definition", "Count"],
+        [[b.capitalize(), d, str(len(bands.get(b, [])))] for b, d in band_defs],
+    )
+
     by_commits = sorted(inv, key=lambda r: -int(r["total_commits"]))
     top_table = _md_table(
         ["Repo", "Commits", "Authors", "Bus-factor Gini", "Top author share"],
@@ -124,6 +142,11 @@ spread, 1 = one author owns everything). Data: `inventory.csv`. Chart: `charts/r
 Total commits across the portfolio: **{total_commits}**, across at least **{total_authors}**
 distinct top-authors (a lower bound: repos sharing the same top author count once). Median
 bus-factor Gini across all repos: **{median_gini:.3f}**.
+
+**Lifecycle staleness band** (a second, independently-thresholded view of the same
+`days_since_last_commit` field, for fleet-wide neglect tracking):
+
+{band_table}
 
 ![Commit volume by repo](charts/repo_activity_top15.png)
 
