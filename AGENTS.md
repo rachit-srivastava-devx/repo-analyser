@@ -118,6 +118,27 @@ For every function you write or touch, walk this out loud and handle or dismiss 
   insight from another collector's CSV, it belongs in `synthesis/`, not `collectors/` (see
   `effort.py` vs `synthesize.py` for the boundary case — `effort` still writes a first-order
   per-author dimension from raw ontology rows; `synthesize` composes *across* every dimension).
+- **A collector's code lives in its own package, not one flat file, and no file in it exceeds
+  ~80 lines.** `collectors/notebook_quality/` is the worked example: `models.py` (dataclass +
+  constants), `discovery.py` (find/parse the source files), one small module per distinct signal
+  (`outputs.py`, `secrets.py`, `execution_order.py`), `analyze.py` (per-repo orchestration that
+  combines the signals), `runner.py` (the portfolio CSV-writing entrypoint), and `__init__.py`
+  that only re-exports the public API (the result dataclass, `analyze_repo`, `run_<name>`) —
+  nothing else may import a collector's internal modules directly. That rule binds *other*
+  production code and *other* collectors' tests — it does not bind a collector's own test suite.
+  A test under `tests/collectors/test_<name>/` may import that same collector's internal submodule
+  directly (e.g. `from repo_analyser.collectors.<name>.discovery import _helper`) when it's
+  covering that function's edge cases more precisely than the public API allows, as long as the
+  test earns its place (real, non-redundant assertions distinct from what the public-API tests
+  already cover — see §2's "would this fail if the implementation were wrong?" test). Settled by
+  independent review during the 2026-09 collector-package refactor (microservices_topology): the
+  rule's real target is cross-package coupling, not a package testing its own internals. Tests
+  mirror the same split under `tests/collectors/test_<name>/`, one file per behavior group. Because nothing under
+  `tests/` has an `__init__.py` anywhere in this repo (pytest's default "prepend" import mode, so
+  every test file is its own bare top-level module), a split test package's shared fixture
+  helper must be named `_<name>_helpers.py` — never the generic `_helpers.py` — otherwise it
+  collides in `sys.modules` with every other collector's identically-named helper the moment the
+  full suite runs together.
 - **Two tools measuring "the same thing" stay two separate, labeled outputs** if they actually
   answer different questions — see `duplication.py` (jscpd, block-level) vs
   `exact_duplicates.py` (sha256, byte-identical) in `docs/METHODOLOGY.md`. Don't average them
