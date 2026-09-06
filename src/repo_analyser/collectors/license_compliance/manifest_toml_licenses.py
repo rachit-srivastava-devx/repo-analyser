@@ -2,7 +2,9 @@
 no TOML parser dependency (this repo's 3.10 floor predates stdlib tomllib).
 Extends fileio.read_toml_has_table's regex-driven presence check into a
 value-bearing span extraction; malformed TOML simply fails to match and
-yields None rather than raising.
+yields None rather than raising. TOML allows a string value in either
+double quotes (a "basic" string) or single quotes (a "literal" string,
+e.g. `license = 'MIT'`), so every value regex accepts both quote styles.
 """
 from __future__ import annotations
 
@@ -28,15 +30,28 @@ def _toml_table_span(text: str, header: str) -> str:
     return rest[: next_header.start()] if next_header else rest
 
 
+def _quoted_value(match: re.Match[str] | None) -> str | None:
+    """A regex match with two alternative capture groups -- one for a
+    double-quoted TOML basic string, one for a single-quoted TOML literal
+    string -- collapsed to whichever one actually matched."""
+    if not match:
+        return None
+    value = match.group(1) if match.group(1) is not None else match.group(2)
+    return value.strip() or None
+
+
 def _scalar_field(span: str, key: str) -> str | None:
-    match = re.search(rf'(?m)^\s*{re.escape(key)}\s*=\s*"([^"]*)"', span)
-    return (match.group(1).strip() or None) if match else None
+    pattern = rf"(?m)^\s*{re.escape(key)}\s*=\s*(?:\"([^\"]*)\"|'([^']*)')"
+    return _quoted_value(re.search(pattern, span))
 
 
 def _table_text_field(span: str, key: str) -> str | None:
     """key = { text = "...", ... } table form, e.g. PEP 621 [project] license."""
-    match = re.search(rf'(?m)^\s*{re.escape(key)}\s*=\s*\{{[^}}]*\btext\s*=\s*"([^"]*)"', span)
-    return (match.group(1).strip() or None) if match else None
+    pattern = (
+        rf"(?m)^\s*{re.escape(key)}\s*=\s*\{{[^}}]*\btext\s*=\s*"
+        r"(?:\"([^\"]*)\"|'([^']*)')"
+    )
+    return _quoted_value(re.search(pattern, span))
 
 
 def license_from_pyproject_toml(repo: Path) -> str | None:

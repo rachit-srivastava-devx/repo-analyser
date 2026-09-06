@@ -26,6 +26,18 @@ class TestPyprojectToml:
         (repo / "pyproject.toml").write_text('[tool.poetry]\nname = "x"\nlicense = "Apache-2.0"\n')
         assert collect_manifest_declared_licenses(repo) == ["Apache-2.0"]
 
+    def test_pep621_single_quoted_literal_string(self, tmp_path: Path) -> None:
+        """TOML permits single-quoted literal strings, not just double-quoted
+        basic strings -- e.g. `license = 'MIT'` is valid TOML."""
+        repo = _git_repo(tmp_path / "repo")
+        (repo / "pyproject.toml").write_text("[project]\nname = 'x'\nlicense = 'MIT'\n")
+        assert collect_manifest_declared_licenses(repo) == ["MIT"]
+
+    def test_pep621_table_text_form_single_quoted(self, tmp_path: Path) -> None:
+        repo = _git_repo(tmp_path / "repo")
+        (repo / "pyproject.toml").write_text("[project]\nname = 'x'\nlicense = { text = 'MIT' }\n")
+        assert collect_manifest_declared_licenses(repo) == ["MIT"]
+
     def test_malformed_toml_does_not_crash(self, tmp_path: Path) -> None:
         repo = _git_repo(tmp_path / "repo")
         (repo / "pyproject.toml").write_text("[[[not valid toml :::")
@@ -36,6 +48,11 @@ class TestCargoToml:
     def test_package_license(self, tmp_path: Path) -> None:
         repo = _git_repo(tmp_path / "repo")
         (repo / "Cargo.toml").write_text('[package]\nname = "x"\nlicense = "MIT"\n')
+        assert collect_manifest_declared_licenses(repo) == ["MIT"]
+
+    def test_package_license_single_quoted(self, tmp_path: Path) -> None:
+        repo = _git_repo(tmp_path / "repo")
+        (repo / "Cargo.toml").write_text("[package]\nname = 'x'\nlicense = 'MIT'\n")
         assert collect_manifest_declared_licenses(repo) == ["MIT"]
 
 

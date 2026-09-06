@@ -5,6 +5,7 @@ from repo_analyser.collectors.license_compliance.spdx_match import match_spdx_id
 from ._license_compliance_helpers import (
     APACHE_2_TEXT,
     BSD_2_TEXT,
+    BSD_3_LINE_WRAPPED_TEXT,
     BSD_3_TEXT,
     CC0_TEXT,
     GPL_2_TEXT,
@@ -29,6 +30,12 @@ class TestMatchSpdxId:
 
     def test_bsd_3_clause_is_not_misdetected_as_bsd_2_clause(self) -> None:
         assert match_spdx_id(BSD_3_TEXT) == "BSD-3-Clause"
+
+    def test_bsd_3_clause_survives_hard_wrapped_signature_phrase(self) -> None:
+        """Regression test: a real LICENSE that hard-wraps clause 2's
+        signature phrase across two lines must still match BSD-3-Clause,
+        not fall through to "unknown"."""
+        assert match_spdx_id(BSD_3_LINE_WRAPPED_TEXT) == "BSD-3-Clause"
 
     def test_gpl_2(self) -> None:
         assert match_spdx_id(GPL_2_TEXT) == "GPL-2.0"

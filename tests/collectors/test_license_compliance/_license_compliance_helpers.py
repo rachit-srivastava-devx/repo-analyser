@@ -31,6 +31,24 @@ BSD_3_TEXT = BSD_2_TEXT + (
     "3. Neither the name of the copyright holder nor the names of its contributors\n"
     "   may be used to endorse or promote products derived from this software.\n"
 )
+# A real hard-wrapped BSD-3-Clause LICENSE (narrower column width than
+# BSD_3_TEXT above): clause 2's signature phrase is split by a newline
+# right in the middle -- "the above" / "copyright" -- exactly the pattern
+# that broke the old literal-substring match.
+BSD_3_LINE_WRAPPED_TEXT = (
+    "Redistribution and use in source and binary forms, with or without\n"
+    "modification, are permitted provided that the following conditions\n"
+    "are met:\n\n"
+    "1. Redistributions of source code must retain the above copyright\n"
+    "   notice, this list of conditions and the following disclaimer.\n\n"
+    "2. Redistributions in binary form must reproduce the above\n"
+    "   copyright notice, this list of conditions and the following\n"
+    "   disclaimer in the documentation and/or other materials provided\n"
+    "   with the distribution.\n\n"
+    "3. Neither the name of the copyright holder nor the names of its\n"
+    "   contributors may be used to endorse or promote products derived\n"
+    "   from this software without specific prior written permission.\n"
+)
 GPL_3_TEXT = "GNU GENERAL PUBLIC LICENSE\n                       Version 3, 29 June 2007\n"
 GPL_2_TEXT = "GNU GENERAL PUBLIC LICENSE\n                       Version 2, June 1991\n"
 LGPL_3_TEXT = (
