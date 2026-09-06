@@ -256,6 +256,16 @@ Otherwise: don't halt. Make the routine call, state the assumption, keep going.
 - [ ] No dead code, no debug prints, no orphan files.
 - [ ] Every call site of a changed function signature is updated (grep for the old name).
 
+**CLI-wiring is not part of Definition of Done for a new collector.** A new `collectors/<name>/`
+package that meets every item above (own package, ≤80-line files, full edge-case coverage, all
+three verification layers green) is mergeable to `dev` even before it's wired into `cli.py`'s
+`MODULES`/`run_module` dict or listed in README's module table. Wiring it in is real, tracked work
+— open a follow-up, don't silently drop it — but it does not block the merge of the collector
+itself. Precedent: `collectors/repo_type/` merged to `dev` unwired and stayed that way across
+several sessions with no issue; `codeowners_health` and `dead_code` followed the same path in
+2026-09. A verifier that FAILs a branch *solely* for missing CLI wiring is holding it to a bar this
+file doesn't set — cite this paragraph rather than re-litigating the policy from scratch.
+
 ---
 
 ## 10. Project bindings

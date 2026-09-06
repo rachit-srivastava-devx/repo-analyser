@@ -6,6 +6,20 @@ reason for the change, not just what changed — recurring mistakes get a rule/A
 
 ## Unreleased
 
+- **Added `codeowners_health.py`**: CODEOWNERS coverage/accuracy (monorepo.md, polyrepo.md).
+  Glob-matches `CODEOWNERS` rules against the tracked file tree for coverage %; a "team no longer
+  exists" staleness check needs the GitHub org API and is named as out of scope, not faked.
+- **Added `dead_code.py`**: Python dead-code detection via `vulture` (new base dependency, see
+  below) and a JS/TS unreferenced-export heuristic. `dead_code_items_python` /
+  `unreferenced_export_count_js` are `None` when not applicable (no files of that language, or
+  vulture unavailable) and an `int` — including a genuine `0` — once the check actually ran, so a
+  `0` is never ambiguous with "didn't check."
+- **Extended `inventory.py`**: changelog-presence/staleness detection and a repo staleness band
+  (fresh/aging/stale), read by `per_repo_digest.py`.
+- **Added `vulture>=2.16`** as a base dependency (`dead_code.py`'s Python path). Floor-pinned, not
+  exact — unlike `mutmut`'s exact pin below, vulture's parsed-stdout format has no documented
+  history of breaking changes yet; re-verify `vulture_runner.py`'s regex against real output before
+  ever bumping past a major version.
 - **`scripts/setup.sh` is now a real one-command setup**, not just a jar fetch. It now also
   creates/updates `.venv`, runs `pip install -e ".[dev]"`, and installs the external scanners
   (gitleaks, semgrep, jscpd, osv-scanner, trivy) via brew/npm when missing — checked-only (never

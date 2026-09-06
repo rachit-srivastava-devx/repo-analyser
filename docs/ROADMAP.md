@@ -22,6 +22,13 @@ deployed app to DAST-scan, Prometheus/Grafana instances, load-testing infra, Git
 own flake-history API. Each such collector should report an explicit `skipped_reason` naming this,
 not silently omit the criterion.
 
+**Consolidated CLI-wiring pass, not yet done**: per AGENTS.md §9's policy (a new collector merges
+unwired; wiring is a tracked follow-up, not a merge gate), `repo_type.py`, `codeowners_health.py`,
+and `dead_code.py` are merged to `dev` but still absent from `cli.py`'s `MODULES`/`run_module` and
+README's module table; `license_compliance.py`/`flag_debt.py` will join this list once their own
+fixes land (see gap-analysis backlog below). Do this as one batch, one PR, once the current fix
+round lands — not piecemeal per collector, to avoid N agents colliding on the same shared files.
+
 ### New collectors (each: read AGENTS.md + the nearest shape-alike collector in full before writing;
 one new file + `tests/collectors/test_<name>.py`; do **not** touch `cli.py`, `README.md`, or
 `synthesis/per_repo_digest.py` — wired in a separate consolidated pass once all land, to avoid N
@@ -40,15 +47,9 @@ agents colliding on the same shared files)
   `skipped_reason` — this always produces an answer; zero content-type matches is a valid, common
   result, not an error.
 
-- **`dead_code.py`** — dead code %. JS/TS: `npx knip` (verify its real JSON/exit-code flags via
-  `--help` first, don't guess). Python: `vulture <repo> --min-confidence 80`, excluding
-  `core.lang.EXCLUDE_DIR_PARTS`. Go: `staticcheck` (already a `lint_quality.py` dependency — read
-  that file first; reuse its invocation for the U1000 subset if that's cleaner than a second
-  subprocess call). Add a `DEAD_CODE_SUPPORTED` set to `core/lang.py` next to the existing
-  `DEPGRAPH_SUPPORTED`-style sets (reuse that exact convention, don't invent a local one). Columns:
-  `repo, language, dead_code_items, dead_code_files_affected, tool_used, skipped_reason`. Tool
-  genuinely missing → `ToolExecutionError` (not a skip — distinct from unsupported-language, which
-  *is* a legitimate `skipped_reason`).
+- **Extend `dead_code.py` (shipped Python+JS/TS, see CHANGELOG) with Go** — `staticcheck`'s U1000
+  check (already a `lint_quality.py` dependency — reuse its invocation for this subset rather than
+  a second subprocess call). Only the Go path remains; don't rebuild Python/JS.
 
 - **`db_hygiene.py`** — committed database file/dump hygiene (checklist calls this out as "a
   distinct leak vector from credential-pattern secrets scanning" — separate from `security.py`).
@@ -491,15 +492,14 @@ flight in separate worktrees (`tooling_drift`, `agent_skill_quality`, `microserv
 "New collectors" list earlier in this doc, don't duplicate. Prioritized backlog below is
 genuinely additive to that list; picked up in order roughly matching payoff-per-file-touched.
 
-- **`codeowners_health.py`** — small, same template as `meta_repo_health.py`. Covers CODEOWNERS
-  coverage/accuracy (monorepo.md, polyrepo.md — 3 criteria). Parse `CODEOWNERS`, glob-match against
-  tracked file tree for coverage %; cross-reference named owners against recent git-log author
-  activity as a staleness proxy (a "team no longer exists" check needs GH org API — out of scope,
-  name it).
-- **`license_compliance.py`** — small-medium, same per-language-tool-dispatch shape as
-  `lint_quality.py`. Covers license-compliance across single-repo/polyrepo/pr-review (3 criteria).
-  `pip-licenses` (Python) / `license-checker` (npm) / `cargo-license` (Rust) / `go-licenses` (Go),
-  dispatched by detected language same as `lint_quality.py` already does.
+- **`license_compliance.py`** — built (`pip-licenses`/`license-checker`/`cargo-license`/
+  `go-licenses`, dispatched by detected language same as `lint_quality.py`), **not yet merged**:
+  independent verification found the SPDX BSD-3-Clause detector's exact-substring match breaks on
+  real line-wrapped LICENSE text; fix in progress on `worktree-agent-a67506e510d5a7ffc`.
+- **`flag_debt.py`** — built (feature-flag SDK presence + stale/orphaned flag detection, answering
+  polyrepo.md's and microservices.md's feature-flag-SDK-presence rows above), **not yet merged**:
+  verification found an oversized test file and a stale base; split + rebase in progress on
+  `worktree-agent-a435f394ecf0e53f2`.
 - **`api_surface_diff.py`** — medium-large, needs the target repo's toolchain to actually build
   (heavier precondition than most collectors here). Covers backward-compat/semver discipline across
   4 checklist files — highest cross-file payoff on this list, but **new external tool deps**
