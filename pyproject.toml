@@ -22,6 +22,14 @@ dependencies = [
                         # mutmut/dependency-cruiser are, so a floor+major-ceiling is enough
                         # (docs/METHODOLOGY.md #37); verified installing and running clean
                         # under this project's own Python version before adding it.
+    "vulture>=2.16",    # Pure-AST static analysis for dead_code.py's Python detection --
+                        # confirmed via `vulture --help` that it never imports/executes
+                        # target-repo code. Its stdout IS a parsed text format
+                        # (collectors/dead_code/vulture_runner.py's regex), the same
+                        # fragility class as mutmut's exact-pinned CLI output below --
+                        # floor-pinned rather than exact because no breaking format
+                        # change has been observed yet (unlike mutmut's #24); re-verify
+                        # vulture_runner.py's regex against real output before bumping.
 ]
 
 [project.scripts]
