@@ -1,36 +1,24 @@
-"""Repo tiering & activity: commit velocity, tenure, bus factor.
+"""Commit velocity, tenure, and bus factor -- the original inventory signal.
 
-Uses plain `git log` (not PyDriller) deliberately: this pass needs only
-commit metadata (hash/author/date/parents), not diffs, and PyDriller's
-per-commit diff parsing would be ~10-50x slower for no benefit here across a
-26+ repo portfolio. Modules that need diffs (ontology, escape) use PyDriller.
-
-Metrics, defined precisely so they can be recomputed by hand from git log:
-
-- tier: by days since last commit -- active <=90, recent <=365, aging <=1095,
-  dormant >1095. Same thresholds this tool's approach was originally validated
-  against in a hand-built reference analysis.
-- bus_factor_gini: Gini coefficient of each author's share of commits in this
-  repo. G = (2 * sum(i * x_i) / (n * sum(x_i))) - (n+1)/n, x_i = each
-  author's commit count sorted ascending, i = 1-indexed rank. G=0 is perfectly
-  even authorship; G->1 is one author owns everything.
-- top_author_share: the single largest author's commit count / total commits.
-"""
+Uses plain `git log` (not PyDriller): this needs only commit metadata
+(hash/author/date/parents), not diffs, and PyDriller's per-commit diff
+parsing would be far slower for no benefit here. See docs/METHODOLOGY.md for
+the exact tier/Gini formulas."""
 from __future__ import annotations
 
-from dataclasses import asdict, dataclass
-from datetime import datetime, timezone
+from dataclasses import dataclass
+from datetime import datetime
 from pathlib import Path
 
-from ..core.util import run, write_csv
+from ...core.util import run
+from .tiering import _gini, _tier
 
 FIELD_SEP = "\x1f"
 LOG_FORMAT = FIELD_SEP.join(["%H", "%ae", "%ad", "%P"])
 
 
 @dataclass
-class RepoInventory:
-    repo: str
+class CommitActivity:
     total_commits: int
     merge_commits: int
     unique_authors: int
@@ -46,27 +34,7 @@ class RepoInventory:
     top_author: str
 
 
-def _tier(days_since_last: int) -> str:
-    if days_since_last <= 90:
-        return "active"
-    if days_since_last <= 365:
-        return "recent"
-    if days_since_last <= 1095:
-        return "aging"
-    return "dormant"
-
-
-def _gini(counts: list[int]) -> float:
-    if not counts or sum(counts) == 0:
-        return 0.0
-    xs = sorted(counts)
-    n = len(xs)
-    cum = sum((i + 1) * x for i, x in enumerate(xs))
-    return round((2 * cum) / (n * sum(xs)) - (n + 1) / n, 4)
-
-
-def analyze_repo(repo: Path, now: datetime | None = None) -> RepoInventory:
-    now = now or datetime.now(timezone.utc)
+def collect_commit_activity(repo: Path, now: datetime) -> CommitActivity:
     res = run(["git", "log", "--all", "--no-renames", f"--format={LOG_FORMAT}",
                "--date=iso-strict"], cwd=repo)
     lines = [line for line in res.stdout.splitlines() if line.strip()]
@@ -95,8 +63,7 @@ def analyze_repo(repo: Path, now: datetime | None = None) -> RepoInventory:
 
     top_author, top_count = max(authors.items(), key=lambda kv: kv[1])
 
-    return RepoInventory(
-        repo=repo.name,
+    return CommitActivity(
         total_commits=len(lines),
         merge_commits=merges,
         unique_authors=len(authors),
@@ -111,11 +78,3 @@ def analyze_repo(repo: Path, now: datetime | None = None) -> RepoInventory:
         top_author_share=round(top_count / len(lines), 4),
         top_author=top_author,
     )
-
-
-def run_inventory(repos: list[Path], out_dir: Path) -> Path:
-    rows = [asdict(analyze_repo(r)) for r in repos]
-    rows.sort(key=lambda r: -r["total_commits"])
-    out_path = out_dir / "inventory.csv"
-    write_csv(out_path, rows)
-    return out_path
