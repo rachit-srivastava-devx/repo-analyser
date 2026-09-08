@@ -2,47 +2,27 @@
 
 Ordered most-specific-first (mirrors detect_primary_type's "checked in
 order, first match wins"): BSD-3-Clause's text is a strict superset of
-BSD-2-Clause's two redistribution clauses plus an extra endorse/promote
-clause, so BSD-3 must be checked before BSD-2 or every BSD-3 file would
-also satisfy BSD-2's weaker requirement. Matching is case-sensitive against
-each license's own canonical casing, which is also what keeps LGPL-3.0's
-body text (which references "version 3 of the GNU General Public License"
-in mixed case) from ever satisfying GPL-3.0's all-caps title signature.
+BSD-2-Clause's two clauses, so BSD-3 must be checked before BSD-2.
+Case-sensitive against each license's own canonical casing, which keeps
+LGPL-3.0's mixed-case body from satisfying GPL-3.0's all-caps title.
 
-Whitespace in both the scanned text and every signature phrase is
-normalized (each run of spaces/tabs/newlines collapsed to one space)
-before the substring check: real LICENSE files hard-wrap prose at
-~70-80 columns, and where that wrap lands is a property of the wrapping
-tool, not of the license text itself -- so a phrase written on one line
-in the tuple below (e.g. BSD-3-Clause's "Redistributions in binary
-form ... the above copyright") commonly appears split across two lines
-in the wild. A literal contiguous substring check would then false-
-negative a genuine license into "unknown"; collapsing whitespace first
-makes the match tolerant of wherever the wrap happened to fall, without
-weakening the case-sensitivity above.
+Whitespace in the scanned text and every phrase is normalized (runs
+collapsed to one space) so a phrase hard-wrapped across lines matches.
 
-A multi-phrase signature's phrases must be found in the SAME relative
-order they're declared in SPDX_SIGNATURES, each subsequent phrase
-starting at or after the previous phrase's end -- a single left-to-right
-scan per signature, not an independent "is this phrase anywhere in the
-whole text" check per phrase. The latter (originally `all(p in text for
-p in phrases)`) is a real false-positive class, not a hypothetical one:
-Apache-2.0's signature is ("Apache License", "Version 2.0") and MPL-2.0's
-is ("Mozilla Public License", "Version 2.0") -- both share the literal
-phrase "Version 2.0". A NOTICE-style document that mentions the Mozilla
-Public License (with its own "Version 2.0") and *separately*, later,
-mentions "the Apache License" with no second "Version 2.0" of its own
-would satisfy Apache-2.0's two phrases "anywhere, any order" (both are
-literally present somewhere in the text) despite never containing real
-Apache-2.0 license text -- and since Apache-2.0 is checked before MPL-2.0
-below, it would win the false match. Requiring ordered, forward-only
-matching closes that: Apache-2.0's "Version 2.0" phrase must appear at
-or after its "Apache License" phrase, which the MPL-only text does not
-satisfy.
+A multi-phrase signature's phrases must be found in declared order
+(`_signatures_match_in_order`) -- but order alone doesn't prove two
+phrases belong to the *same* fragment. Apache-2.0 and MPL-2.0 both
+contain "Version 2.0": a bare, unrelated "the Apache License" mention
+followed *anywhere later* by a genuine MPL-2.0 block would satisfy
+Apache-2.0's signature purely off MPL's own "Version 2.0". This module
+confines phrase order to one structural section (`spdx_sections.py`,
+which also explains why a distance bound can't be used instead).
 """
 from __future__ import annotations
 
 import re
+
+from .spdx_sections import split_into_sections
 
 SPDX_SIGNATURES: tuple[tuple[str, tuple[str, ...]], ...] = (
     ("LGPL-3.0", ("GNU LESSER GENERAL PUBLIC LICENSE", "Version 3")),
@@ -82,17 +62,10 @@ _NORMALIZED_SIGNATURES: tuple[tuple[str, tuple[str, ...]], ...] = tuple(
 
 
 def _signatures_match_in_order(text: str, signatures: tuple[str, ...]) -> bool:
-    """True iff every phrase in `signatures` is found in `text`, each
-    subsequent phrase starting at or after the previous phrase's end --
-    a single forward scan through `text`, not an independent whole-text
-    search per phrase. This is what makes a multi-phrase signature mean
-    "this text contains these clauses in this relative order" (the real
-    structure of a license document) rather than "these phrases are each
-    present somewhere, in any order, at any distance" (satisfiable by
-    unrelated text that happens to quote fragments of two different
-    licenses -- see the Apache-2.0/MPL-2.0 "Version 2.0" case in this
-    module's docstring).
-    """
+    """True iff every phrase is found in `text` in order, each starting
+    at or after the previous phrase's end -- one forward scan. Callers
+    pass one already-section-scoped, collapsed string, so "in order"
+    here also means "within the same section" (module docstring)."""
     cursor = 0
     for signature in signatures:
         found_at = text.find(signature, cursor)
@@ -103,12 +76,13 @@ def _signatures_match_in_order(text: str, signatures: tuple[str, ...]) -> bool:
 
 
 def match_spdx_id(text: str) -> str:
-    """Return the first SPDX id whose full signature is present in text,
-    with its phrases in declared order, else "unknown". Never raises --
-    an empty or garbage text simply satisfies no signature.
-    """
-    normalized_text = _collapse_whitespace(text)
+    """Return the first SPDX id whose signature is present, in order,
+    within one structural section (`spdx_sections.split_into_sections`),
+    else "unknown". Never raises -- empty/garbage/huge text simply
+    satisfies no signature."""
+    sections = [_collapse_whitespace(section) for section in split_into_sections(text)]
     for spdx_id, signatures in _NORMALIZED_SIGNATURES:
-        if _signatures_match_in_order(normalized_text, signatures):
-            return spdx_id
+        for section in sections:
+            if _signatures_match_in_order(section, signatures):
+                return spdx_id
     return "unknown"

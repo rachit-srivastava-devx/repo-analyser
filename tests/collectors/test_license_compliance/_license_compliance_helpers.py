@@ -88,3 +88,46 @@ BSD_2_REVERSED_ORDER_TEXT = (
     "Redistributions in binary form must reproduce the above copyright notice.\n"
     "Redistributions of source code must retain the above copyright notice.\n"
 )
+# The counter-example that broke the ordered-scan-only fix (commit
+# ba6e469): a bare, unrelated "Apache License" mention comes FIRST,
+# followed by a rule line, followed by a genuine MPL-2.0 block whose OWN
+# "Version 2.0" is what ordered-scan (with no section bound) would wrongly
+# borrow to complete Apache-2.0's ("Apache License", "Version 2.0")
+# signature -- ordered-scan alone is satisfied because "Apache License"'s
+# position is still before "Version 2.0"'s. Splitting on the "---" rule
+# line puts the bare mention and the MPL block in different sections, so
+# Apache-2.0 never sees both of its phrases in one section and MPL-2.0
+# (checked after Apache-2.0) correctly wins instead.
+LEADING_APACHE_MENTION_TRAILING_MPL_BLOCK_TEXT = (
+    "THIRD-PARTY NOTICES\n\n"
+    "This distribution includes code originally licensed under the Apache "
+    "License;\nsee vendor/foo/NOTICE for attribution details.\n\n"
+    "---\n\n"
+    "Mozilla Public License Version 2.0\n"
+    "==================================\n\n"
+    "This Source Code Form is subject to the terms of the Mozilla Public\n"
+    "License, v. 2.0.\n"
+)
+# A second, self-invented adversarial shape: THREE rule-delimited sections
+# (using three different rule characters, "=", "-", "*", to prove the
+# splitter isn't tuned to one specific character), where the first section
+# bare-mentions Apache with no "Version 2.0" of its own, the middle section
+# is unrelated filler with no license phrases at all, and only the third
+# section is a genuine, complete MPL-2.0 block. Correct answer is still
+# MPL-2.0: Apache-2.0's signature never completes in any single section,
+# and the middle section contributes nothing to either signature.
+MULTI_SECTION_APACHE_MENTION_THEN_FILLER_THEN_MPL_BLOCK_TEXT = (
+    "THIRD-PARTY NOTICES\n"
+    "====================\n\n"
+    "This module vendors code originally released under the Apache "
+    "License,\nper upstream's NOTICE file; no further Apache text is "
+    "reproduced here.\n\n"
+    "--------------------\n\n"
+    "This section intentionally left blank for future dependency "
+    "additions.\n\n"
+    "********************\n\n"
+    "Mozilla Public License Version 2.0\n"
+    "==================================\n\n"
+    "This Source Code Form is subject to the terms of the Mozilla\n"
+    "Public License, v. 2.0.\n"
+)

@@ -4,6 +4,9 @@ from repo_analyser.collectors.license_compliance.spdx_match import (
     _signatures_match_in_order,
     match_spdx_id,
 )
+from repo_analyser.collectors.license_compliance.spdx_sections import (
+    split_into_sections,
+)
 
 from ._license_compliance_helpers import (
     APACHE_2_TEXT,
@@ -16,9 +19,11 @@ from ._license_compliance_helpers import (
     GPL_2_TEXT,
     GPL_3_TEXT,
     ISC_TEXT,
+    LEADING_APACHE_MENTION_TRAILING_MPL_BLOCK_TEXT,
     LGPL_3_TEXT,
     MIT_TEXT,
     MPL_2_TEXT,
+    MULTI_SECTION_APACHE_MENTION_THEN_FILLER_THEN_MPL_BLOCK_TEXT,
     UNLICENSE_TEXT,
 )
 
@@ -103,3 +108,62 @@ class TestMatchSpdxId:
     def test_signatures_match_in_order_helper_handles_empty_text(self) -> None:
         assert _signatures_match_in_order("", ("anything",)) is False
         assert _signatures_match_in_order("", ()) is True
+
+    def test_leading_apache_mention_trailing_mpl_block_resolves_to_mpl(self) -> None:
+        """The counter-example that broke the ordered-scan-only fix
+        (ba6e469): a bare "Apache License" mention precedes a rule line,
+        which precedes a genuine MPL-2.0 block whose own "Version 2.0" is
+        the ONLY "Version 2.0" in the document. Ordered-scan alone still
+        wrongly returns Apache-2.0 here since "Apache License"'s position
+        precedes "Version 2.0"'s; only a section bound between the rule
+        line prevents Apache-2.0 from borrowing MPL's phrase."""
+        assert (
+            match_spdx_id(LEADING_APACHE_MENTION_TRAILING_MPL_BLOCK_TEXT)
+            == "MPL-2.0"
+        )
+
+    def test_multi_section_document_with_irrelevant_middle_section_resolves_to_mpl(
+        self,
+    ) -> None:
+        """Self-invented adversarial case beyond the given counter-example:
+        three rule-delimited sections (three different rule characters),
+        where only the last is a genuine, complete MPL-2.0 block. Proves
+        the fix generalizes past exactly one rule line and one other
+        section, and that an unrelated filler section doesn't interfere."""
+        assert (
+            match_spdx_id(MULTI_SECTION_APACHE_MENTION_THEN_FILLER_THEN_MPL_BLOCK_TEXT)
+            == "MPL-2.0"
+        )
+
+    def test_huge_text_with_no_rule_line_still_matches(self) -> None:
+        """A huge single-block LICENSE text (no rule line at all) must
+        still match in one pass -- split_into_sections degrades to a
+        single section, so this is unchanged from pre-fix behavior."""
+        huge_padding = "x" * 500_000
+        assert match_spdx_id(huge_padding + "\n" + MIT_TEXT) == "MIT"
+
+    def test_unicode_text_around_signature_is_unknown_when_no_signature_present(
+        self,
+    ) -> None:
+        assert match_spdx_id("© 2024 日本語 — all rights reserved") == "unknown"
+
+
+class TestSplitIntoSections:
+    def test_no_rule_line_returns_single_section(self) -> None:
+        assert split_into_sections("just plain text\nwith two lines\n") == [
+            "just plain text\nwith two lines\n"
+        ]
+
+    def test_empty_text_returns_single_empty_section(self) -> None:
+        assert split_into_sections("") == [""]
+
+    def test_splits_on_dash_rule_line(self) -> None:
+        assert split_into_sections("first\n---\nsecond") == ["first\n", "second"]
+
+    def test_splits_on_multiple_different_rule_characters(self) -> None:
+        assert split_into_sections("a\n===\nb\n***\nc") == ["a\n", "b\n", "c"]
+
+    def test_two_char_run_is_not_a_rule_line(self) -> None:
+        """Only 3+ repeats count as a rule line -- "--" alone (e.g. an
+        em-dash-style aside) must not split the text."""
+        assert split_into_sections("a\n--\nb") == ["a\n--\nb"]
