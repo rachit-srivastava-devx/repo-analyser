@@ -5,8 +5,12 @@ from pathlib import Path
 import pytest
 
 from repo_analyser.collectors.ci_gates import (
+    _lockfiles_found,
+    _package_json_precommit_signal,
+    _precommit_signals,
     _workflow_is_deploy_only,
     _workflow_runs_tests,
+    _workflow_verifies_lockfile,
     analyze_repo,
     run_ci_gates,
 )
@@ -86,6 +90,168 @@ class TestWorkflowIsDeployOnly:
     def test_no_deploy_hints_is_false(self) -> None:
         doc = {"jobs": {"build": {"steps": [{"run": "npm ci"}]}}}
         assert _workflow_is_deploy_only(doc) is False
+
+
+class TestWorkflowVerifiesLockfile:
+    def test_npm_ci_step(self) -> None:
+        doc = {"jobs": {"build": {"steps": [{"run": "npm ci"}]}}}
+        assert _workflow_verifies_lockfile(doc) is True
+
+    def test_npm_install_is_not_verification(self) -> None:
+        # npm install silently rewrites the lockfile on drift instead of
+        # failing the build -- it must NOT count as enforcement.
+        doc = {"jobs": {"build": {"steps": [{"run": "npm install"}]}}}
+        assert _workflow_verifies_lockfile(doc) is False
+
+    def test_poetry_check(self) -> None:
+        doc = {"jobs": {"build": {"steps": [{"run": "poetry check"}]}}}
+        assert _workflow_verifies_lockfile(doc) is True
+
+    def test_cargo_build_locked(self) -> None:
+        doc = {"jobs": {"build": {"steps": [{"run": "cargo build --locked"}]}}}
+        assert _workflow_verifies_lockfile(doc) is True
+
+    def test_cargo_test_locked_with_extra_flags(self) -> None:
+        doc = {"jobs": {"build": {"steps": [{"run": "cargo test --locked --all-features"}]}}}
+        assert _workflow_verifies_lockfile(doc) is True
+
+    def test_cargo_build_without_locked_is_not_verification(self) -> None:
+        doc = {"jobs": {"build": {"steps": [{"run": "cargo build --release"}]}}}
+        assert _workflow_verifies_lockfile(doc) is False
+
+    def test_go_mod_verify(self) -> None:
+        doc = {"jobs": {"build": {"steps": [{"run": "go mod verify"}]}}}
+        assert _workflow_verifies_lockfile(doc) is True
+
+    def test_no_verification_signal_is_false(self) -> None:
+        doc = {"jobs": {"build": {"steps": [{"run": "echo hello"}]}}}
+        assert _workflow_verifies_lockfile(doc) is False
+
+    def test_npm_ci_mentioned_only_in_a_comment_is_not_verification(self) -> None:
+        # A `run:` block is a literal shell script and can contain a bash
+        # comment that merely mentions "npm ci" without invoking it -- the
+        # actually-invoked command here is plain `npm install`, which must
+        # not be shadowed by a substring match against the comment text.
+        doc = {"jobs": {"build": {"steps": [{"run": (
+            "# note: prod CI uses npm ci, but this workflow is dev-only\n"
+            "npm install\n"
+        )}]}}}
+        assert _workflow_verifies_lockfile(doc) is False
+
+    def test_npm_ci_as_real_step_alongside_an_unrelated_comment(self) -> None:
+        # A comment elsewhere in the same run block must not suppress a
+        # genuine invocation later in the same script.
+        doc = {"jobs": {"build": {"steps": [{"run": (
+            "# installing dependencies\n"
+            "npm ci\n"
+        )}]}}}
+        assert _workflow_verifies_lockfile(doc) is True
+
+
+class TestPrecommitSignals:
+    def test_precommit_config_file_present(self, tmp_path: Path) -> None:
+        repo = tmp_path / "repo"
+        repo.mkdir()
+        (repo / ".pre-commit-config.yaml").write_text("repos: []\n")
+        assert _precommit_signals(repo) == [".pre-commit-config.yaml"]
+
+    def test_precommit_config_present_but_empty_or_malformed_still_counts(self, tmp_path: Path) -> None:
+        # This is a presence check, not a validity check -- an empty or
+        # malformed .pre-commit-config.yaml still means a repo *intends* to
+        # gate on pre-commit (and the file is never parsed as YAML here at
+        # all, so malformed content can't raise).
+        repo = tmp_path / "repo"
+        repo.mkdir()
+        (repo / ".pre-commit-config.yaml").write_text("")
+        assert _precommit_signals(repo) == [".pre-commit-config.yaml"]
+        (repo / ".pre-commit-config.yaml").write_text("not: valid: yaml: [structure")
+        assert _precommit_signals(repo) == [".pre-commit-config.yaml"]
+
+    def test_husky_dir_present(self, tmp_path: Path) -> None:
+        repo = tmp_path / "repo"
+        (repo / ".husky").mkdir(parents=True)
+        assert _precommit_signals(repo) == [".husky"]
+
+    def test_package_json_lint_staged_key(self, tmp_path: Path) -> None:
+        repo = tmp_path / "repo"
+        repo.mkdir()
+        (repo / "package.json").write_text('{"name": "x", "lint-staged": {"*.js": "eslint"}}')
+        assert _precommit_signals(repo) == ["package.json:lint-staged"]
+
+    def test_package_json_pre_commit_key(self, tmp_path: Path) -> None:
+        repo = tmp_path / "repo"
+        repo.mkdir()
+        (repo / "package.json").write_text('{"pre-commit": ["test"]}')
+        assert _precommit_signals(repo) == ["package.json:pre-commit"]
+
+    def test_no_signals_at_all(self, tmp_path: Path) -> None:
+        repo = tmp_path / "repo"
+        repo.mkdir()
+        assert _precommit_signals(repo) == []
+
+    def test_package_json_without_relevant_keys_is_no_signal(self, tmp_path: Path) -> None:
+        repo = tmp_path / "repo"
+        repo.mkdir()
+        (repo / "package.json").write_text('{"name": "x", "scripts": {"test": "jest"}}')
+        assert _package_json_precommit_signal(repo) is None
+
+    def test_malformed_package_json_does_not_crash_and_contributes_no_signal(self, tmp_path: Path) -> None:
+        repo = tmp_path / "repo"
+        repo.mkdir()
+        (repo / "package.json").write_text("{not valid json")
+        assert _package_json_precommit_signal(repo) is None
+        assert _precommit_signals(repo) == []
+
+    def test_multiple_signals_all_reported_sorted(self, tmp_path: Path) -> None:
+        repo = tmp_path / "repo"
+        (repo / ".husky").mkdir(parents=True)
+        (repo / ".pre-commit-config.yaml").write_text("repos: []\n")
+        assert _precommit_signals(repo) == [".husky", ".pre-commit-config.yaml"]
+
+
+class TestLockfilesFound:
+    def test_single_lockfile(self, tmp_path: Path) -> None:
+        repo = tmp_path / "repo"
+        repo.mkdir()
+        (repo / "package-lock.json").write_text("{}")
+        assert _lockfiles_found(repo) == ["package-lock.json"]
+
+    def test_no_lockfile(self, tmp_path: Path) -> None:
+        repo = tmp_path / "repo"
+        repo.mkdir()
+        assert _lockfiles_found(repo) == []
+
+    def test_multiple_lockfiles_simultaneously_all_reported(self, tmp_path: Path) -> None:
+        # A real, if unusual, repo state (e.g. mid-migration between package
+        # managers) -- must not silently collapse to just one name.
+        repo = tmp_path / "repo"
+        repo.mkdir()
+        (repo / "package-lock.json").write_text("{}")
+        (repo / "yarn.lock").write_text("")
+        assert _lockfiles_found(repo) == ["package-lock.json", "yarn.lock"]
+
+    def test_monorepo_lockfiles_in_subdirectories_are_found(self, tmp_path: Path) -> None:
+        # A monorepo commonly has no root lockfile at all -- each
+        # per-package subdirectory manages its own. Root-empty must not be
+        # reported as "no lockfile discipline" when subdirectories clearly
+        # have it.
+        repo = tmp_path / "repo"
+        (repo / "packages" / "api").mkdir(parents=True)
+        (repo / "packages" / "web").mkdir(parents=True)
+        (repo / "packages" / "api" / "package-lock.json").write_text("{}")
+        (repo / "packages" / "web" / "yarn.lock").write_text("")
+        assert _lockfiles_found(repo) == [
+            "packages/api/package-lock.json", "packages/web/yarn.lock",
+        ]
+
+    def test_lockfile_inside_node_modules_is_excluded(self, tmp_path: Path) -> None:
+        # A transitive dependency can ship its own lockfile inside
+        # node_modules -- that's not this repo's own lockfile discipline
+        # and must not be counted.
+        repo = tmp_path / "repo"
+        (repo / "node_modules" / "some-dep").mkdir(parents=True)
+        (repo / "node_modules" / "some-dep" / "package-lock.json").write_text("{}")
+        assert _lockfiles_found(repo) == []
 
 
 class TestAnalyzeRepo:
@@ -173,6 +339,73 @@ jobs:
         result = analyze_repo(repo)
         assert result.workflow_count == 2
         assert result.any_workflow_runs_tests is True  # a.yml alone is enough
+
+    def test_repo_with_precommit_config(self, tmp_path: Path) -> None:
+        repo = tmp_path / "repo"
+        repo.mkdir()
+        (repo / ".pre-commit-config.yaml").write_text("repos: []\n")
+        result = analyze_repo(repo)
+        assert result.has_precommit_hook is True
+        assert result.precommit_signals == ".pre-commit-config.yaml"
+
+    def test_repo_with_no_precommit_signals(self, tmp_path: Path) -> None:
+        repo = tmp_path / "repo"
+        repo.mkdir()
+        result = analyze_repo(repo)
+        assert result.has_precommit_hook is False
+        assert result.precommit_signals == ""
+
+    def test_lockfile_present_but_ci_runs_plain_npm_install(self, tmp_path: Path) -> None:
+        # lockfile committed, but CI never enforces it -- present and NOT
+        # verified must both be visible, not collapsed into one flag.
+        repo = tmp_path / "repo"
+        repo.mkdir()
+        (repo / "package-lock.json").write_text("{}")
+        _write_workflow(repo, "ci.yml",
+                         "on: push\njobs:\n  build:\n    steps:\n"
+                         "      - run: npm install\n      - run: npm test\n")
+        result = analyze_repo(repo)
+        assert result.lockfile_present is True
+        assert result.lockfiles_found == "package-lock.json"
+        assert result.lockfile_verified_in_ci is False
+
+    def test_lockfile_present_and_ci_runs_npm_ci(self, tmp_path: Path) -> None:
+        repo = tmp_path / "repo"
+        repo.mkdir()
+        (repo / "package-lock.json").write_text("{}")
+        _write_workflow(repo, "ci.yml",
+                         "on: push\njobs:\n  build:\n    steps:\n"
+                         "      - run: npm ci\n      - run: npm test\n")
+        result = analyze_repo(repo)
+        assert result.lockfile_present is True
+        assert result.lockfile_verified_in_ci is True
+
+    def test_precommit_and_lockfile_computed_even_with_no_workflows_dir(self, tmp_path: Path) -> None:
+        # Regression guard: precommit/lockfile signals must not depend on
+        # .github/workflows existing -- a repo can gate locally via hooks
+        # and have a committed lockfile with zero GitHub Actions workflows,
+        # and the early-return path for "no workflows dir" must not blank
+        # out these otherwise-independent columns.
+        repo = tmp_path / "repo"
+        repo.mkdir()
+        (repo / ".husky").mkdir()
+        (repo / "yarn.lock").write_text("")
+        result = analyze_repo(repo)
+        assert result.has_ci_config is False
+        assert result.has_precommit_hook is True
+        assert result.precommit_signals == ".husky"
+        assert result.lockfile_present is True
+        assert result.lockfiles_found == "yarn.lock"
+        assert result.lockfile_verified_in_ci is False
+
+    def test_multiple_lockfiles_via_analyze_repo(self, tmp_path: Path) -> None:
+        repo = tmp_path / "repo"
+        repo.mkdir()
+        (repo / "package-lock.json").write_text("{}")
+        (repo / "yarn.lock").write_text("")
+        result = analyze_repo(repo)
+        assert result.lockfile_present is True
+        assert result.lockfiles_found == "package-lock.json;yarn.lock"
 
 
 class TestRunCiGates:
