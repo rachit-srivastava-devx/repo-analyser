@@ -3,8 +3,9 @@ from __future__ import annotations
 from pathlib import Path
 
 from repo_analyser.collectors.design_docs.adr_status_git import detect_status, modified_after_acceptance
+from repo_analyser.collectors.design_docs.git_dates import commit_hashes_touching
 
-from ._design_docs_helpers import commit_all, init_repo, write
+from ._design_docs_helpers import commit_all, git_mv, init_repo, write
 
 
 def test_detect_status_inline_and_windowed() -> None:
@@ -41,6 +42,35 @@ def test_modified_after_acceptance_no_when_acceptance_is_the_latest_commit(tmp_p
     commit_all(repo, "accept ADR")
 
     assert modified_after_acceptance(repo, rel) == "no"
+
+
+def test_modified_after_acceptance_true_across_a_rename(tmp_path: Path) -> None:
+    """Regression for the `--follow`+`--reverse` git quirk: combining the
+    two silently breaks rename-following, truncating the returned history
+    to only the commits since the file's CURRENT path and losing the
+    pre-rename accept commit entirely. This exact 4-commit shape (draft,
+    accept, pure rename, real post-acceptance edit under the new name)
+    reproduced the bug directly -- `commit_hashes_touching` used to return
+    only the last commit here, and modified_after_acceptance reported "no"
+    for an ADR that genuinely was edited after acceptance. Both the
+    corrected commit list and the corrected final verdict are asserted."""
+    repo = init_repo(tmp_path / "r")
+    old_rel = "docs/adr/0004-orig-name.md"
+    new_rel = "docs/adr/0004-renamed.md"
+    write(repo, old_rel, "# ADR\n\n## Status\n\nProposed\n")
+    commit_all(repo, "draft ADR")
+    write(repo, old_rel, "# ADR\n\n## Status\n\nAccepted\n")
+    commit_all(repo, "accept ADR")
+    git_mv(repo, old_rel, new_rel)
+    commit_all(repo, "rename ADR file")
+    write(repo, new_rel, "# ADR\n\n## Status\n\nAccepted\n\nClarified after rename.\n")
+    commit_all(repo, "real edit after rename")
+
+    commits = commit_hashes_touching(repo, new_rel)
+    assert len(commits) == 4, (
+        f"expected all 4 commits across the rename, got {len(commits)}: {commits}"
+    )
+    assert modified_after_acceptance(repo, new_rel) == "yes"
 
 
 def test_modified_after_acceptance_unknown_for_untracked_file(tmp_path: Path) -> None:

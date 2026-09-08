@@ -31,8 +31,26 @@ def doc_last_commit_epoch(repo: Path, rel_path: str) -> int | None:
     migration_hygiene's own precedent: a gitignored-but-present file still
     counts as existing); freshness is inherently a git-history question
     though, so git IS consulted here, and an untracked file genuinely has
-    no freshness signal to report."""
+    no freshness signal to report.
+
+    Falls back to a case-insensitive pathspec (git's `:(icase)` magic) only
+    when the exact-case lookup comes back empty. Filesystem existence
+    (`find_hld_candidates`'s `is_file()` check) is case-insensitive on
+    macOS/Windows, but git's own pathspec matching in `git log -- <path>`
+    is always case-sensitive -- so a candidate like "docs/architecture.md"
+    that's genuinely tracked under "docs/ARCHITECTURE.md" (or vice versa)
+    would otherwise come back with no history and get miscounted into
+    hld_untracked_count as if it were never committed, when the underlying
+    file is tracked fine, just under different-case pathspec. Exact match
+    is tried first and preferred so two genuinely distinct, differently-
+    cased files on a case-sensitive filesystem (most CI Linux runners) each
+    still resolve to their own history, never blended -- the icase retry
+    only fires on the empty-result path, where there is nothing to blend."""
     res = run(["git", "log", "-1", "--format=%ct", "--", rel_path], cwd=repo, check=False)
+    out = res.stdout.strip()
+    if out:
+        return int(out)
+    res = run(["git", "log", "-1", "--format=%ct", "--", f":(icase){rel_path}"], cwd=repo, check=False)
     out = res.stdout.strip()
     return int(out) if out else None
 
@@ -40,10 +58,20 @@ def doc_last_commit_epoch(repo: Path, rel_path: str) -> int | None:
 def commit_hashes_touching(repo: Path, rel_path: str) -> list[str]:
     """Oldest-to-newest commit hashes that touched this path (--follow to
     survive a rename). Empty list for an untracked path -- same "no
-    history" signal as doc_last_commit_epoch, not a crash."""
-    res = run(["git", "log", "--follow", "--format=%H", "--reverse", "--", rel_path],
+    history" signal as doc_last_commit_epoch, not a crash.
+
+    Deliberately does NOT pass --reverse to git itself: `--follow` combined
+    with `--reverse` is a real git quirk where rename-following silently
+    breaks, truncating the result to only the commits since the file's
+    CURRENT path and losing everything before the rename (reproduced and
+    confirmed during this fix -- a 4-commit rename history collapsed to 1).
+    Git log's plain (newest-first) output correctly follows the full rename
+    chain, so that's what's fetched here, then reversed in Python to hand
+    callers the oldest-to-newest order they already expect."""
+    res = run(["git", "log", "--follow", "--format=%H", "--", rel_path],
               cwd=repo, check=False)
-    return [line for line in res.stdout.splitlines() if line.strip()]
+    commits = [line for line in res.stdout.splitlines() if line.strip()]
+    return commits[::-1]
 
 
 def content_at_commit(repo: Path, commit: str, rel_path: str) -> str | None:

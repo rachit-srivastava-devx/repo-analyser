@@ -229,6 +229,19 @@ column names and no overlapping scope.
    case-folding, named here rather than silently producing a
    platform-dependent count with no explanation.
 
+   **Related fix (2026-09 review)**: `hld_untracked_count` used to inherit
+   a phantom-untracked side effect of the caveat above -- git's own
+   pathspec matching in `git log -- <path>` is always case-sensitive even
+   on a case-insensitive filesystem, so a candidate genuinely tracked as
+   `docs/ARCHITECTURE.md` queried via the wrong-case `docs/architecture.md`
+   candidate came back with *no* history and got miscounted as untracked,
+   even though the file is tracked fine. Fixed: `doc_last_commit_epoch`
+   (`git_dates.py`) now retries with git's `:(icase)` pathspec magic only
+   when the exact-case lookup is empty, so it still resolves to the real
+   history. The retry fires only on an empty exact match, so two genuinely
+   distinct, differently-cased tracked files on a case-sensitive filesystem
+   never get their histories blended together.
+
 2. **ADR coverage & discipline** (`has_adr_dir`/`adr_dirs_found`/
    `adr_file_count`/`adr_files_sample`/`adr_malformed_count`/
    `adr_with_standard_sections_count`): detects `docs/adr/`,
@@ -256,6 +269,32 @@ column names and no overlapping scope.
    reported (not a guess of "no") when the file has no git history at all
    (untracked/uncommitted) or a historical revision's content couldn't be
    read back.
+
+   **Bug found and fixed (2026-09 review)**: `commit_hashes_touching`
+   (`git_dates.py`) used to ask git for oldest-to-newest order directly
+   (`git log --follow --reverse`). `--follow` combined with `--reverse` is
+   a real git quirk where rename-following silently breaks -- the result
+   truncates to only the commits since the file's *current* path/name,
+   losing everything before a rename. Reproduced directly: a 4-commit
+   history (draft, accept, rename, edit-after-rename) collapsed to the
+   single post-rename commit, so `modified_after_acceptance` never saw the
+   pre-rename accept commit and reported "no" (confidently wrong) for an
+   ADR that genuinely was edited after acceptance. Fixed by dropping
+   `--reverse` from the git invocation (plain `git log --follow` correctly
+   walks the full rename chain, newest-first) and reversing the resulting
+   list in Python instead. Covered by
+   `test_modified_after_acceptance_true_across_a_rename` in
+   `tests/collectors/test_design_docs/test_adr_status_git.py`.
+
+   **Known, accepted limitation (unfixed, documented)**: `detect_status`
+   has no fenced-code-block or blockquote awareness -- an ADR that quotes
+   another ADR's `## Status\n\nAccepted` inside a ```` ``` ```` example
+   block gets counted as genuinely Accepted. Same family of limitation as
+   the typo-fix-vs-real-reversal caveat above: this signal reads status
+   *text*, not document structure, and this is a second concrete way that
+   surfaces. Not fixed in this pass -- the added complexity of fence-
+   tracking wasn't judged worth it for a signal that's already documented
+   as text-only, not semantic.
 
 4. **Decision reversibility tagging** (`adr_reversibility_tagged_count`):
    of `adr_file_count`, how many ADRs carry an explicit

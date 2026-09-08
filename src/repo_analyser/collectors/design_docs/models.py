@@ -21,6 +21,13 @@ from dataclasses import dataclass
 # across platforms with different case-folding, not a bug in the check
 # itself, and is called out here rather than silently producing a
 # platform-dependent count with no explanation.
+# hld_untracked_count is not a second victim of the case-fold double-count
+# above: doc_last_commit_epoch (git_dates.py) falls back to a case-
+# insensitive `:(icase)` pathspec when the exact-case `git log` lookup for
+# a candidate comes back empty, so a candidate tracked under different-case
+# spelling than the one this list names still resolves to its real history
+# instead of being miscounted as untracked. Named here because it was found
+# and fixed alongside the hld_docs_found caveat above, in the same review.
 HLD_CANDIDATES = [
     "docs/ARCHITECTURE.md", "ARCHITECTURE.md", "docs/architecture.md",
     "docs/design.md", "docs/HLD.md",

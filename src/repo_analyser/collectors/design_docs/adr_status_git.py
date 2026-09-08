@@ -26,7 +26,15 @@ from .models import ADR_STATUS_LABEL_RE, ADR_STATUS_VALUES, ADR_STATUS_WINDOW_LI
 def detect_status(text: str) -> str:
     """First status value found top-to-bottom, or "" when no recognizable
     status marker exists at all -- reported as such by the caller
-    (adr_status_unknown_count), never guessed."""
+    (adr_status_unknown_count), never guessed.
+
+    Known, documented limitation: no fenced-code-block or blockquote
+    awareness. An ADR that quotes another ADR's "## Status\\n\\nAccepted"
+    inside a ``` example block as illustration gets counted as genuinely
+    Accepted -- same family as the "can't tell a typo fix from a real
+    reversal" caveat on modified_after_acceptance below: this reads status
+    text, not document structure. Not guarded against (see
+    docs/METHODOLOGY.md for the reasoning)."""
     lines = text.splitlines()
     for m in ADR_STATUS_LABEL_RE.finditer(text):
         line_idx = text.count("\n", 0, m.start())

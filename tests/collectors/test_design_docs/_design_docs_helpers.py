@@ -45,6 +45,10 @@ def commit_all(repo: Path, message: str) -> None:
     git(repo, "commit", "-q", "-m", message)
 
 
+def git_mv(repo: Path, src: str, dst: str) -> None:
+    git(repo, "mv", src, dst)
+
+
 ADR_ACCEPTED = """# 0001. Use PostgreSQL
 
 ## Context
