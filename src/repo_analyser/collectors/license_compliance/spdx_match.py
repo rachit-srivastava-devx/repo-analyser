@@ -1,28 +1,28 @@
 """Static text-signature SPDX matching -- no network, no license database.
 
-Ordered most-specific-first (mirrors detect_primary_type's "checked in
-order, first match wins"): BSD-3-Clause's text is a strict superset of
-BSD-2-Clause's two clauses, so BSD-3 must be checked before BSD-2.
+Two prior attempts fixed "is this signature satisfiable anywhere in the
+document" and got the boundary wrong: ordered-scan (ba6e469) let two
+unrelated fragments feed one signature as long as they sat in declared
+order anywhere in the document; rule-line sections (f0d603c) bounded
+that to one delimiter shape and broke on a blank-line/heading-separated
+document instead. This version ranks every satisfiable signature by
+`spdx_window.minimum_window_span` (tightest cluster of phrases wins) and
+`drop_dominated` (a strict phrase-subset of another satisfiable
+signature loses, e.g. BSD-2 vs BSD-3) -- see spdx_window.py for the
+algorithms, their complexity, and the one documented residual gap.
+
+Declared order (BSD-3 before BSD-2 etc.) is now only the final tie-break
+via each candidate's declared index, not the primary selection rule.
 Case-sensitive against each license's own canonical casing, which keeps
 LGPL-3.0's mixed-case body from satisfying GPL-3.0's all-caps title.
-
-Whitespace in the scanned text and every phrase is normalized (runs
-collapsed to one space) so a phrase hard-wrapped across lines matches.
-
-A multi-phrase signature's phrases must be found in declared order
-(`_signatures_match_in_order`) -- but order alone doesn't prove two
-phrases belong to the *same* fragment. Apache-2.0 and MPL-2.0 both
-contain "Version 2.0": a bare, unrelated "the Apache License" mention
-followed *anywhere later* by a genuine MPL-2.0 block would satisfy
-Apache-2.0's signature purely off MPL's own "Version 2.0". This module
-confines phrase order to one structural section (`spdx_sections.py`,
-which also explains why a distance bound can't be used instead).
+Whitespace in the scanned text and every phrase is collapsed (runs to
+one space) so a phrase hard-wrapped across lines still matches.
 """
 from __future__ import annotations
 
 import re
 
-from .spdx_sections import split_into_sections
+from .spdx_window import drop_dominated, minimum_window_span
 
 SPDX_SIGNATURES: tuple[tuple[str, tuple[str, ...]], ...] = (
     ("LGPL-3.0", ("GNU LESSER GENERAL PUBLIC LICENSE", "Version 3")),
@@ -49,9 +49,8 @@ _WHITESPACE_RUN = re.compile(r"\s+")
 
 
 def _collapse_whitespace(text: str) -> str:
-    """Collapse every run of whitespace -- including a hard-wrap newline --
-    to a single space, so a multi-line signature phrase matches regardless
-    of where a real LICENSE file happened to wrap it."""
+    """Collapse whitespace runs (incl. hard-wrap newlines) to one space,
+    so a multi-line signature phrase matches regardless of wrap point."""
     return _WHITESPACE_RUN.sub(" ", text)
 
 
@@ -63,9 +62,11 @@ _NORMALIZED_SIGNATURES: tuple[tuple[str, tuple[str, ...]], ...] = tuple(
 
 def _signatures_match_in_order(text: str, signatures: tuple[str, ...]) -> bool:
     """True iff every phrase is found in `text` in order, each starting
-    at or after the previous phrase's end -- one forward scan. Callers
-    pass one already-section-scoped, collapsed string, so "in order"
-    here also means "within the same section" (module docstring)."""
+    at or after the previous phrase's end. This is only the
+    satisfiability gate (a reversed-clause document never becomes a
+    candidate) -- how far apart the phrases are is
+    `spdx_window.minimum_window_span`'s job, used only to rank
+    signatures this gate already accepted."""
     cursor = 0
     for signature in signatures:
         found_at = text.find(signature, cursor)
@@ -76,13 +77,21 @@ def _signatures_match_in_order(text: str, signatures: tuple[str, ...]) -> bool:
 
 
 def match_spdx_id(text: str) -> str:
-    """Return the first SPDX id whose signature is present, in order,
-    within one structural section (`spdx_sections.split_into_sections`),
+    """Return the SPDX id whose signature is present (in declared order)
+    with the tightest minimum-window span among all such candidates,
     else "unknown". Never raises -- empty/garbage/huge text simply
     satisfies no signature."""
-    sections = [_collapse_whitespace(section) for section in split_into_sections(text)]
-    for spdx_id, signatures in _NORMALIZED_SIGNATURES:
-        for section in sections:
-            if _signatures_match_in_order(section, signatures):
-                return spdx_id
-    return "unknown"
+    normalized_text = _collapse_whitespace(text)
+    candidates: list[tuple[int, str, tuple[str, ...], int]] = []
+    for declared_index, (spdx_id, signatures) in enumerate(_NORMALIZED_SIGNATURES):
+        if not _signatures_match_in_order(normalized_text, signatures):
+            continue
+        span = minimum_window_span(normalized_text, signatures)
+        if span is not None:
+            candidates.append((declared_index, spdx_id, signatures, span))
+
+    survivors = drop_dominated(candidates)
+    if not survivors:
+        return "unknown"
+    best = min(survivors, key=lambda candidate: (candidate[3], candidate[0]))
+    return best[1]

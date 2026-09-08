@@ -5,7 +5,15 @@ from pathlib import Path
 
 from repo_analyser.collectors.license_compliance import analyze_repo
 
-from ._license_compliance_helpers import MIT_TEXT, _git_repo
+from ._license_compliance_helpers import (
+    BLANK_LINE_SEPARATED_APACHE_MENTION_THEN_MPL_BLOCK_TEXT,
+    HEADING_SEPARATED_APACHE_MENTION_THEN_MPL_BLOCK_TEXT,
+    LEADING_APACHE_MENTION_TRAILING_MPL_BLOCK_TEXT,
+    MIT_TEXT,
+    NO_SEPARATOR_LINE_ADJACENT_APACHE_MENTION_THEN_MPL_BLOCK_TEXT,
+    THREE_WAY_CONTAMINATION_TEXT,
+    _git_repo,
+)
 
 
 class TestNoLicenseNoManifests:
@@ -50,6 +58,40 @@ class TestLicenseMismatch:
         result = analyze_repo(repo)
         assert result.license_id == "unknown"
         assert result.license_mismatch is False
+
+
+class TestSpdxCrossContaminationAtCollectorLevel:
+    """Full analyze_repo() collector-level reproduction of the three
+    known-hard cases plus this attempt's own self-invented adversarial
+    cases, over a real on-disk LICENSE file in a real git repo -- not
+    just match_spdx_id() called directly."""
+
+    def test_rule_line_separated_counter_example_resolves_to_mpl(self, tmp_path: Path) -> None:
+        repo = _git_repo(tmp_path / "repo")
+        (repo / "LICENSE").write_text(LEADING_APACHE_MENTION_TRAILING_MPL_BLOCK_TEXT)
+        assert analyze_repo(repo).license_id == "MPL-2.0"
+
+    def test_blank_line_separated_variant_resolves_to_mpl(self, tmp_path: Path) -> None:
+        repo = _git_repo(tmp_path / "repo")
+        (repo / "LICENSE").write_text(BLANK_LINE_SEPARATED_APACHE_MENTION_THEN_MPL_BLOCK_TEXT)
+        assert analyze_repo(repo).license_id == "MPL-2.0"
+
+    def test_heading_separated_variant_resolves_to_mpl(self, tmp_path: Path) -> None:
+        repo = _git_repo(tmp_path / "repo")
+        (repo / "LICENSE").write_text(HEADING_SEPARATED_APACHE_MENTION_THEN_MPL_BLOCK_TEXT)
+        assert analyze_repo(repo).license_id == "MPL-2.0"
+
+    def test_no_separator_line_adjacent_variant_resolves_to_mpl(self, tmp_path: Path) -> None:
+        repo = _git_repo(tmp_path / "repo")
+        (repo / "LICENSE").write_text(
+            NO_SEPARATOR_LINE_ADJACENT_APACHE_MENTION_THEN_MPL_BLOCK_TEXT
+        )
+        assert analyze_repo(repo).license_id == "MPL-2.0"
+
+    def test_three_way_contamination_resolves_to_mpl(self, tmp_path: Path) -> None:
+        repo = _git_repo(tmp_path / "repo")
+        (repo / "LICENSE").write_text(THREE_WAY_CONTAMINATION_TEXT)
+        assert analyze_repo(repo).license_id == "MPL-2.0"
 
 
 class TestHasDependenciesNoLicense:

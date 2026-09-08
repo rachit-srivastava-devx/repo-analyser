@@ -131,3 +131,71 @@ MULTI_SECTION_APACHE_MENTION_THEN_FILLER_THEN_MPL_BLOCK_TEXT = (
     "This Source Code Form is subject to the terms of the Mozilla\n"
     "Public License, v. 2.0.\n"
 )
+# The exact same false-positive shape as LEADING_APACHE_MENTION_TRAILING_
+# MPL_BLOCK_TEXT above, but with the "---" rule line replaced by a single
+# blank line -- this is what broke attempt 2 (f0d603c): rule-line section
+# splitting doesn't fire when there's no rule line, even though the
+# document's structure (an unrelated bare mention, then a real MPL block)
+# is identical. Tightest-window matching doesn't depend on any separator
+# at all, so this must resolve the same way: MPL-2.0.
+BLANK_LINE_SEPARATED_APACHE_MENTION_THEN_MPL_BLOCK_TEXT = (
+    "THIRD-PARTY NOTICES\n\n"
+    "This distribution includes code originally licensed under the Apache "
+    "License;\nsee vendor/foo/NOTICE for attribution details.\n\n"
+    "\n"
+    "Mozilla Public License Version 2.0\n"
+    "==================================\n\n"
+    "This Source Code Form is subject to the terms of the Mozilla Public\n"
+    "License, v. 2.0.\n"
+)
+# Same false-positive shape again, separated by a Markdown-style heading
+# instead of a rule line or a blank line -- the other structural shape
+# attempt 2's verifier confirmed broke f0d603c.
+HEADING_SEPARATED_APACHE_MENTION_THEN_MPL_BLOCK_TEXT = (
+    "## Bundled Dependency: foo-lib\n\n"
+    "This distribution includes code originally licensed under the Apache "
+    "License;\nsee vendor/foo/NOTICE for attribution details.\n\n"
+    "## Bundled Dependency: bar-lib\n\n"
+    "Mozilla Public License Version 2.0\n"
+    "==================================\n\n"
+    "This Source Code Form is subject to the terms of the Mozilla Public\n"
+    "License, v. 2.0.\n"
+)
+# Self-invented adversarial case: no separator of ANY kind, not even a
+# blank line -- the bare Apache mention and the MPL block are on directly
+# adjacent lines. Proves the fix doesn't depend on finding *some*
+# boundary at all; it only cares how tightly each signature's own phrases
+# cluster.
+NO_SEPARATOR_LINE_ADJACENT_APACHE_MENTION_THEN_MPL_BLOCK_TEXT = (
+    "This distribution includes code originally licensed under the Apache License;\n"
+    "see vendor/foo/NOTICE for attribution details.\n"
+    "Mozilla Public License Version 2.0\n"
+    "This Source Code Form is subject to the terms of the Mozilla Public License, v. 2.0.\n"
+)
+# Self-invented three-way contamination: bare mentions of Apache-2.0 AND
+# GPL-2.0 (neither with its own second phrase) surround a genuine,
+# complete MPL-2.0 block. Proves the fix generalizes past exactly two
+# competing licenses.
+THREE_WAY_CONTAMINATION_TEXT = (
+    "This bundle vendors code under the Apache License from one dependency.\n"
+    "Another dependency, foo-cli, is licensed under GNU GENERAL PUBLIC LICENSE "
+    "terms (see its own file).\n"
+    "Mozilla Public License Version 2.0\n"
+    "==================================\n\n"
+    "This Source Code Form is subject to the terms of the Mozilla Public "
+    "License, v. 2.0.\n"
+)
+# Self-invented "break your own fix" attempt, and the one that succeeds:
+# a bare, casual mention of the license's own full name -- "Apache License
+# Version 2.0" -- written naturally in one breath is structurally
+# IDENTICAL (two phrases immediately adjacent) to a genuine Apache-2.0
+# header ("Apache License\nVersion 2.0, January 2004" collapses to the
+# same shape). There is no textual feature left to tell a bare mention
+# of the license's own name apart from the license's own title once both
+# are this tight, so this document -- genuinely MIT-licensed, with an
+# incidental one-line mention of Apache-2.0 elsewhere -- is misclassified
+# as Apache-2.0. Tracked in test_spdx_match.py as a documented, expected
+# (xfail) limitation, not a hidden one.
+BARE_LICENSE_NAME_MENTION_ADJACENT_TO_MIT_TEXT = (
+    "See the Apache License Version 2.0 notice below for the vendored file.\n\n"
+) + MIT_TEXT
