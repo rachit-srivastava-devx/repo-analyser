@@ -112,6 +112,13 @@ class TestRunComplexityRealExecution:
         repo.mkdir()
         out_dir = tmp_path / "out"
         out_dir.mkdir()
-        run_complexity([repo], out_dir)
+        hotspot_path = run_complexity([repo], out_dir)
+        assert hotspot_path.read_text().splitlines() == [
+            "repo,file,total_ccn,max_ccn,function_count,total_nloc,n_revs,hotspot_score"
+        ]
+        func_path = out_dir / "complexity_functions.csv"
+        assert func_path.read_text().splitlines() == [
+            "repo,file,function,nloc,ccn,tokens,params,length,start_line,end_line"
+        ]
         errors = json.loads((out_dir / "complexity_errors.json").read_text())
         assert errors[repo.name] == "simulated lizard failure"

@@ -124,5 +124,5 @@ def analyze_repo(repo: Path) -> CIGateResult:
 def run_ci_gates(repos: list[Path], out_dir: Path) -> Path:
     rows = [asdict(analyze_repo(r)) for r in repos]
     out_path = out_dir / "ci_gates.csv"
-    write_csv(out_path, rows)
+    write_csv(out_path, rows, fieldnames=CIGateResult)
     return out_path

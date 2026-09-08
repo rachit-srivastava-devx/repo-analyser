@@ -8,17 +8,42 @@ import pytest
 
 from repo_analyser.collectors.effort import (
     TOIL_MIN_CLUSTER_SIZE,
+    _gini,
+    _top_decile_share,
     detect_toil_clusters,
     monthly_superclass_share,
     per_author_breakdown,
     run_effort,
 )
+from repo_analyser.collectors.inventory.tiering import _gini as inventory_gini
 
 
 def _commit(author="alice", superclass="delivery", date="2025-01-15T00:00:00", repo="r",
             primary_dir="src/api", leaf="feature", subject="did a thing") -> dict:
     return {"author": author, "superclass": superclass, "date": date, "repo": repo,
             "primary_dir": primary_dir, "leaf": leaf, "subject": subject}
+
+
+ONTOLOGY_FIELDNAMES = ["repo", "sha", "author", "date", "is_merge", "subject", "leaf",
+                       "superclass", "matched_rule", "primary_dir", "file_count"]
+
+
+def _ontology_row(repo: str, author: str, sha: str, superclass: str = "delivery",
+                   leaf: str = "feature", date: str = "2025-01-01T00:00:00") -> dict:
+    """One row as it would actually appear in ontology_commits.csv. is_merge
+    is always "False" -- ontology.py excludes merge commits before writing
+    a row at all (see effort.py's module docstring), so there is no
+    real-world row with is_merge=True to construct here."""
+    return {"repo": repo, "sha": sha, "author": author, "date": date, "is_merge": "False",
+            "subject": "did a thing", "leaf": leaf, "superclass": superclass,
+            "matched_rule": "message:x", "primary_dir": "src", "file_count": "1"}
+
+
+def _write_ontology_csv(path: Path, rows: list[dict]) -> None:
+    with open(path, "w", newline="") as f:
+        w = csv.DictWriter(f, fieldnames=ONTOLOGY_FIELDNAMES)
+        w.writeheader()
+        w.writerows(rows)
 
 
 class TestPerAuthorBreakdown:
@@ -107,6 +132,46 @@ class TestDetectToilClusters:
         assert clusters[0]["dominant_leaf"] == "ci_build"
 
 
+class TestGini:
+    def test_empty_is_zero(self) -> None:
+        assert _gini([]) == 0.0
+
+    def test_all_zero_is_zero(self) -> None:
+        assert _gini([0, 0, 0]) == 0.0
+
+    def test_single_author_is_zero(self) -> None:
+        assert _gini([42]) == 0.0
+
+    def test_perfectly_even_authorship_is_zero(self) -> None:
+        assert _gini([20, 20, 20]) == 0.0
+
+    def test_skewed_distribution_matches_mean_absolute_difference_formula(self) -> None:
+        counts = [1, 2, 3, 4]
+        # Independent cross-check: the well-known mean-absolute-difference
+        # form of the Gini coefficient, computed here without reusing any of
+        # _gini's own rank-based arithmetic, so this isn't just restating
+        # the implementation under a different name.
+        n = len(counts)
+        alt = round(sum(abs(a - b) for a in counts for b in counts) / (2 * n * sum(counts)), 4)
+        assert _gini(counts) == 0.25
+        assert _gini(counts) == alt
+
+
+class TestTopDecileShare:
+    def test_empty_is_zero(self) -> None:
+        assert _top_decile_share([]) == (0, 0.0)
+
+    def test_two_authors_top_decile_collapses_to_top_one(self) -> None:
+        # ceil(10% of 2) rounds up to 1 -- "top decile" is never zero authors.
+        assert _top_decile_share([20, 20]) == (1, 0.5)
+
+    def test_eleven_authors_top_decile_is_two(self) -> None:
+        # ceil(10% of 11) == 2, not 1 -- the count returned alongside the
+        # share is what makes that rounding rule checkable by hand.
+        counts = [100] + [1] * 10
+        assert _top_decile_share(counts) == (2, 0.9182)
+
+
 class TestRunEffort:
     def test_raises_on_empty_ontology_csv(self, tmp_path: Path) -> None:
         ontology_csv = tmp_path / "ontology_commits.csv"
@@ -139,3 +204,111 @@ class TestRunEffort:
         assert summary["total_commits"] == 20
         assert summary["toil_clusters_found"] == 1
         assert summary["toil_commits_in_clusters"] == 20
+
+
+class TestRunEffortContributionGini:
+    """Portfolio-wide contribution concentration end to end: build a real
+    (multi-repo, where relevant) ontology_commits.csv, run `run_effort`, and
+    read `effort_summary.json` back -- the same "trace back to a rerunnable
+    command" bar the rest of this codebase holds itself to. Expected Gini
+    values are computed by hand in a comment and cross-checked against the
+    mean-absolute-difference formula in `TestGini`, not just re-derived from
+    `_gini` itself."""
+
+    def test_perfectly_even_authorship_across_a_multi_repo_portfolio_is_zero_gini(
+        self, tmp_path: Path
+    ) -> None:
+        # alice and bob each commit 20 times to r1 and 20 times to r2 --
+        # 40 commits each, portfolio-wide -- so the two-repo split is
+        # invisible to the per-author total; counts=[40, 40] -> gini=0.
+        rows = []
+        for repo in ("r1", "r2"):
+            for author in ("alice", "bob"):
+                rows += [_ontology_row(repo, author, sha=f"{repo}-{author}-{i}") for i in range(20)]
+        ontology_csv = tmp_path / "ontology_commits.csv"
+        _write_ontology_csv(ontology_csv, rows)
+        out_dir = tmp_path / "out"
+        out_dir.mkdir()
+        run_effort(ontology_csv, out_dir)
+
+        summary = json.loads((out_dir / "effort_summary.json").read_text())
+        assert summary["total_authors"] == 2
+        assert summary["contribution_gini_portfolio_wide"] == 0.0
+
+    def test_one_dominant_author_across_the_whole_portfolio_pushes_gini_high(self, tmp_path: Path) -> None:
+        # alice commits to *both* repos, 50 times each (100 total); 10 other
+        # authors commit once each to exactly one of the two repos. Alice's
+        # dominance (100 of 110 commits, ~91%) is only visible once counts
+        # are summed across repos -- per-repo she's "only" 50 of 55 (~91%
+        # too, coincidentally similar here, but each minor author would look
+        # like a much bigger share of *their own* repo alone than they are
+        # of the portfolio). counts=[100, 1x10] -> gini=0.8182 (see TestGini
+        # and TestTopDecileShare for this exact distribution's numbers).
+        rows = []
+        rows += [_ontology_row("r1", "alice", sha=f"r1-alice-{i}") for i in range(50)]
+        rows += [_ontology_row("r2", "alice", sha=f"r2-alice-{i}") for i in range(50)]
+        rows += [_ontology_row("r1", f"minor-r1-{i}", sha=f"r1-minor-{i}") for i in range(5)]
+        rows += [_ontology_row("r2", f"minor-r2-{i}", sha=f"r2-minor-{i}") for i in range(5)]
+        ontology_csv = tmp_path / "ontology_commits.csv"
+        _write_ontology_csv(ontology_csv, rows)
+        out_dir = tmp_path / "out"
+        out_dir.mkdir()
+        run_effort(ontology_csv, out_dir)
+
+        summary = json.loads((out_dir / "effort_summary.json").read_text())
+        assert summary["total_authors"] == 11
+        assert summary["contribution_gini_portfolio_wide"] == 0.8182
+        assert summary["contribution_top10pct_author_count"] == 2
+        assert summary["contribution_top10pct_commit_share"] == 0.9182
+
+    def test_author_committing_to_only_one_of_several_repos_is_still_summed_correctly(
+        self, tmp_path: Path
+    ) -> None:
+        # alice: 6 commits in r1 + 6 in r2 = 12 total. bob: r1 only (4).
+        # carol: r2 only (4). Nothing here should require the caller to pass
+        # a repo list separately -- summing across repos is just what
+        # grouping the whole run's commits by author already does.
+        rows = []
+        rows += [_ontology_row("r1", "alice", sha=f"r1-alice-{i}") for i in range(6)]
+        rows += [_ontology_row("r2", "alice", sha=f"r2-alice-{i}") for i in range(6)]
+        rows += [_ontology_row("r1", "bob", sha=f"r1-bob-{i}") for i in range(4)]
+        rows += [_ontology_row("r2", "carol", sha=f"r2-carol-{i}") for i in range(4)]
+        ontology_csv = tmp_path / "ontology_commits.csv"
+        _write_ontology_csv(ontology_csv, rows)
+        out_dir = tmp_path / "out"
+        out_dir.mkdir()
+        author_path = run_effort(ontology_csv, out_dir)
+
+        with open(author_path) as f:
+            by_author = {r["author"]: int(r["total_commits"]) for r in csv.DictReader(f)}
+        assert by_author == {"alice": 12, "bob": 4, "carol": 4}
+
+        summary = json.loads((out_dir / "effort_summary.json").read_text())
+        assert summary["contribution_gini_portfolio_wide"] == 0.2667
+
+    def test_single_repo_run_matches_inventorys_per_repo_bus_factor_gini(self, tmp_path: Path) -> None:
+        """A single-repo run (len(repos) == 1, i.e. discover_repos returned
+        exactly one path) still computes a valid portfolio-wide Gini, and --
+        because it's the exact same formula `inventory.py` applies for
+        bus_factor_gini -- it is numerically identical to that one repo's
+        own bus-factor Gini, for the same author/commit-count distribution.
+        This equivalence holds only when the repo has no merge commits:
+        `ontology.py` (this module's input) excludes merge commits from the
+        population by construction (see effort.py's module docstring and
+        `_ontology_row`'s comment above), while `inventory.py`'s
+        bus_factor_gini comes from raw `git log --all` output that still
+        includes them. This fixture is merge-free, so the two are exactly
+        equal -- not just close."""
+        counts = {"a": 1, "b": 2, "c": 3, "d": 4}
+        rows = []
+        for author, n in counts.items():
+            rows += [_ontology_row("solo-repo", author, sha=f"{author}-{i}") for i in range(n)]
+        ontology_csv = tmp_path / "ontology_commits.csv"
+        _write_ontology_csv(ontology_csv, rows)
+        out_dir = tmp_path / "out"
+        out_dir.mkdir()
+        run_effort(ontology_csv, out_dir)
+
+        summary = json.loads((out_dir / "effort_summary.json").read_text())
+        assert summary["contribution_gini_portfolio_wide"] == 0.25
+        assert inventory_gini(list(counts.values())) == summary["contribution_gini_portfolio_wide"]

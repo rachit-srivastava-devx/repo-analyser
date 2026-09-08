@@ -99,7 +99,12 @@ class TestRunDuplicationRealExecution:
         out_dir.mkdir()
         repos = [portfolio / "repo-a", portfolio / "repo-b"]
         out_path = run_duplication(portfolio, out_dir, repos=repos)
-        assert out_path.exists()
+        assert out_path.read_text().splitlines() == [
+            "repo_a,path_a,repo_b,path_b,is_cross_repo,same_relative_path,lines,tokens,format"
+        ]
+        assert (out_dir / "duplication_shared_path_clusters.csv").read_text().splitlines() == [
+            "relative_path,repo_count,repos"
+        ]
         summary = json.loads((out_dir / "duplication_summary.json").read_text())
         assert summary["cross_repo_clone_pairs"] == 0
 

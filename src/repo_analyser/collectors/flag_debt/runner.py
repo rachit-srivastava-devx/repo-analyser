@@ -5,12 +5,13 @@ from pathlib import Path
 
 from ...core.util import write_csv, write_json
 from .analyze import analyze_repo
+from .models import FlagDebtResult
 
 
 def run_flag_debt(repos: list[Path], out_dir: Path) -> Path:
     rows = [asdict(analyze_repo(r)) for r in repos]
     out_path = out_dir / "flag_debt.csv"
-    write_csv(out_path, rows)
+    write_csv(out_path, rows, fieldnames=FlagDebtResult)
     repos_with_sdk = sum(1 for r in rows if r["sdk_detected"])
     write_json(out_dir / "flag_debt_summary.json", {
         "repos_total": len(rows),

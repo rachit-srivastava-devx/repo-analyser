@@ -64,8 +64,7 @@ def run_exact_duplicates(repos: list[Path], out_dir: Path) -> Path:
     cross_repo_groups.sort(key=lambda g: -cast(int, g["repo_count"]))
     out_path = out_dir / "exact_duplicate_files.csv"
     write_csv(out_path, cross_repo_groups,
-              fieldnames=["sha256", "repo_count", "instance_count", "relative_paths", "repos"]
-              if cross_repo_groups else None)
+              fieldnames=["sha256", "repo_count", "instance_count", "relative_paths", "repos"])
 
     single_path_groups = [g for g in cross_repo_groups if ";" not in str(g["relative_paths"])]
     write_json(out_dir / "exact_duplicate_summary.json", {

@@ -116,7 +116,7 @@ def run_duplication(portfolio_root: Path, out_dir: Path, min_lines: int = 10, mi
 
     write_csv(out_dir / "duplication_clones.csv", rows,
               fieldnames=["repo_a", "path_a", "repo_b", "path_b", "is_cross_repo",
-                          "same_relative_path", "lines", "tokens", "format"] if rows else None)
+                          "same_relative_path", "lines", "tokens", "format"])
 
     cluster_rows = sorted(
         ({"relative_path": p, "repo_count": len(repos), "repos": ";".join(sorted(repos))}
@@ -124,7 +124,7 @@ def run_duplication(portfolio_root: Path, out_dir: Path, min_lines: int = 10, mi
         key=lambda r: -cast(int, r["repo_count"]),
     )
     write_csv(out_dir / "duplication_shared_path_clusters.csv", cluster_rows,
-              fieldnames=["relative_path", "repo_count", "repos"] if cluster_rows else None)
+              fieldnames=["relative_path", "repo_count", "repos"])
 
     write_json(out_dir / "duplication_summary.json", {
         "portfolio_stats": stats,

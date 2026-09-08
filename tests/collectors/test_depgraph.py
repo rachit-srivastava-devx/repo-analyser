@@ -315,3 +315,12 @@ class TestRunDepgraph:
         out_path = run_depgraph([repo_a, repo_b], out_dir)
         rows = out_path.read_text().splitlines()
         assert len(rows) == 3  # header + 2 repos
+
+    def test_empty_repo_list_writes_header_only_csv(self, tmp_path: Path) -> None:
+        out_dir = tmp_path / "out"
+        out_dir.mkdir()
+        out_path = run_depgraph([], out_dir)
+        assert out_path.read_text().splitlines() == [
+            "repo,total_modules,total_dependencies,circular_count,orphan_count,"
+            "top_in_degree_module,top_in_degree,skipped_reason"
+        ]

@@ -17,7 +17,7 @@ import signal
 import subprocess
 from collections.abc import Callable, Iterable
 from concurrent.futures import ThreadPoolExecutor
-from dataclasses import dataclass
+from dataclasses import dataclass, fields
 from pathlib import Path
 from typing import Any, TypeVar
 
@@ -180,10 +180,7 @@ def run_concurrent(items: Iterable[T], fn: Callable[[T], R], max_workers: int = 
 
 
 def is_git_repo(path: Path) -> bool:
-    # A worktree's or submodule's .git is a *file* (containing "gitdir: ...")
-    # rather than a directory -- both are real repos, so accept either.
-    git_path = path / ".git"
-    return git_path.is_dir() or git_path.is_file()
+    return (path / ".git").is_dir()
 
 
 def discover_repos(target: Path) -> list[Path]:
@@ -204,13 +201,23 @@ def discover_repos(target: Path) -> list[Path]:
     return children
 
 
-def write_csv(path: Path, rows: Iterable[dict[str, Any]], fieldnames: list[str] | None = None) -> int:
+def write_csv(path: Path, rows: Iterable[dict[str, Any]], fieldnames: list[str] | type) -> int:
     """Writes rows to CSV, returns the row count actually written. A caller
     that gets 0 back and expected >0 must decide what that means -- this
-    function will not paper over it by skipping the file."""
+    function will not paper over it by skipping the file.
+
+    fieldnames is required and never derived from rows: an empty rows list
+    has no first element to derive columns from, so deriving them only in
+    the non-empty case produces a real header for a non-empty result and a
+    blank line for an empty one -- silently wrong output, not a valid empty
+    result (docs/adr/0001-fail-loud-not-silent.md). Pass either the column
+    name list directly, or a dataclass type to derive it from via
+    dataclasses.fields()."""
+    if not fieldnames:
+        raise TypeError("write_csv: fieldnames is required -- pass a non-empty column-name list or a dataclass type")
     rows = list(rows)
     path.parent.mkdir(parents=True, exist_ok=True)
-    fn = fieldnames or (list(rows[0].keys()) if rows else [])
+    fn = fieldnames if isinstance(fieldnames, list) else [f.name for f in fields(fieldnames)]
     with open(path, "w", newline="") as f:
         w = csv.DictWriter(f, fieldnames=fn)
         w.writeheader()

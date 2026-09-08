@@ -7,12 +7,13 @@ from pathlib import Path
 
 from ...core.util import write_csv, write_json
 from .analyze import analyze_repo
+from .models import MicroservicesTopologyResult
 
 
 def run_microservices_topology(repos: list[Path], out_dir: Path) -> Path:
     rows = [asdict(analyze_repo(r)) for r in repos]
     out_path = out_dir / "microservices_topology.csv"
-    write_csv(out_path, rows)
+    write_csv(out_path, rows, fieldnames=MicroservicesTopologyResult)
     analyzed = [r for r in rows if not r["skip_reason"]]
     write_json(out_dir / "microservices_topology_summary.json", {
         "repos_total": len(rows),

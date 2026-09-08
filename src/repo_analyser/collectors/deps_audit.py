@@ -134,10 +134,10 @@ def run_deps_audit(repos: list[Path], out_dir: Path) -> Path:
 
     cve_path = out_dir / "deps_cves.csv"
     write_csv(cve_path, [asdict(c) for c in all_cves],
-              fieldnames=list(CVEFinding.__annotations__.keys()) if all_cves else None)
+              fieldnames=list(CVEFinding.__annotations__.keys()))
     outdated_path = out_dir / "deps_outdated.csv"
     write_csv(outdated_path, [asdict(o) for o in all_outdated],
-              fieldnames=list(OutdatedPackage.__annotations__.keys()) if all_outdated else None)
+              fieldnames=list(OutdatedPackage.__annotations__.keys()))
     if errors:
         write_json(out_dir / "deps_audit_errors.json", errors)
 

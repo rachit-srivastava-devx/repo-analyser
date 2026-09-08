@@ -6,12 +6,13 @@ from pathlib import Path
 
 from ...core.util import write_csv, write_json
 from .analyze import analyze_repo
+from .models import RepoTypeResult
 
 
 def run_repo_type(repos: list[Path], out_dir: Path) -> Path:
     rows = [asdict(analyze_repo(r, repos)) for r in repos]
     out_path = out_dir / "repo_type.csv"
-    write_csv(out_path, rows)
+    write_csv(out_path, rows, fieldnames=RepoTypeResult)
     primary_counts = Counter(r["primary_type"] for r in rows)
     content_counts: Counter[str] = Counter()
     for r in rows:

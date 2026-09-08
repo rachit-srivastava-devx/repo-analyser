@@ -120,7 +120,12 @@ class TestRunDepsAudit:
         out_dir = tmp_path / "out"
         out_dir.mkdir()
         cve_path = run_deps_audit([], out_dir)
-        assert cve_path.exists()
+        assert cve_path.read_text().splitlines() == [
+            "repo,source,package,severity,id,fix_available"
+        ]
+        assert (out_dir / "deps_outdated.csv").read_text().splitlines() == [
+            "repo,package,current,wanted,latest"
+        ]
         summary = json.loads((out_dir / "deps_audit_summary.json").read_text())
         assert summary["total_cve_findings"] == 0
         assert summary["outdated_major_version_behind"] == 0

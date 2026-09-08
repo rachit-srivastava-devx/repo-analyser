@@ -440,7 +440,7 @@ def run_mutation(targets: list[tuple[Path, str]], out_dir: Path, tmp_dir: Path) 
     (docs/METHODOLOGY.md #23), not just add load."""
     rows = [asdict(analyze_repo(repo, f, tmp_dir=tmp_dir)) for repo, f in targets]
     out_path = out_dir / "mutation_results.csv"
-    write_csv(out_path, rows)
+    write_csv(out_path, rows, fieldnames=MutationResult)
     ran = [r for r in rows if r["ran"]]
     write_json(out_dir / "mutation_summary.json", {
         "repos_attempted": len(rows), "repos_succeeded": len(ran),

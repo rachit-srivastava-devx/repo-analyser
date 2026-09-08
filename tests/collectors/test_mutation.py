@@ -475,7 +475,10 @@ class TestRunMutation:
         out_dir = tmp_path / "out"
         out_dir.mkdir()
         out_path = run_mutation([], out_dir, tmp_path / "tmp")
-        assert out_path.exists()
+        assert out_path.read_text().splitlines() == [
+            "repo,file_mutated,total_mutants,killed,survived,no_coverage,timeout,"
+            "mutation_score,ran,skip_reason,suspicious,segfault"
+        ]
         import json
         summary = json.loads((out_dir / "mutation_summary.json").read_text())
         assert summary["repos_attempted"] == 0

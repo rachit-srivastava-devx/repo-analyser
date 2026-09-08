@@ -155,7 +155,7 @@ def run_escape(repos: list[Path], out_dir: Path) -> Path:
 
     rows = [asdict(e) for e in all_escapes]
     out_path = out_dir / "escapes.csv"
-    write_csv(out_path, rows, fieldnames=list(Escape.__annotations__.keys()) if rows else None)
+    write_csv(out_path, rows, fieldnames=list(Escape.__annotations__.keys()))
 
     # monthly escape rate needs the denominator (all non-merge commits per month per repo),
     # computed once here from git log directly rather than re-walking PyDriller.
@@ -180,7 +180,8 @@ def run_escape(repos: list[Path], out_dir: Path) -> Path:
             "month": month, "commits": n_commits, "escaped_introductions": n_escaped,
             "escape_rate_12mo": round(n_escaped / n_commits, 4) if n_commits else 0.0,
         })
-    write_csv(out_dir / "escape_monthly.csv", monthly)
+    write_csv(out_dir / "escape_monthly.csv", monthly,
+              fieldnames=["month", "commits", "escaped_introductions", "escape_rate_12mo"])
 
     latencies = sorted(e.latency_days for e in all_escapes)
     def pct(p):

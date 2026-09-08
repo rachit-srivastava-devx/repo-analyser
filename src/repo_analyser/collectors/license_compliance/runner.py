@@ -6,12 +6,13 @@ from pathlib import Path
 
 from ...core.util import write_csv, write_json
 from .analyze import analyze_repo
+from .models import LicenseComplianceResult
 
 
 def run_license_compliance(repos: list[Path], out_dir: Path) -> Path:
     rows = [asdict(analyze_repo(r)) for r in repos]
     out_path = out_dir / "license_compliance.csv"
-    write_csv(out_path, rows)
+    write_csv(out_path, rows, fieldnames=LicenseComplianceResult)
     write_json(out_dir / "license_compliance_summary.json", {
         "repos_total": len(rows),
         "license_id_counts": dict(Counter(r["license_id"] for r in rows)),

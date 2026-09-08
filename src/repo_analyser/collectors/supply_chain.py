@@ -101,7 +101,7 @@ def run_supply_chain(repos: list[Path], out_dir: Path, tmp_dir: Path) -> Path:
 
     misconfig_path = out_dir / "supply_chain_misconfigs.csv"
     write_csv(misconfig_path, [asdict(m) for m in misconfigs],
-              fieldnames=list(MisconfigFinding.__annotations__.keys()) if misconfigs else None)
+              fieldnames=list(MisconfigFinding.__annotations__.keys()))
 
     if errors:
         write_json(out_dir / "supply_chain_errors.json", errors)

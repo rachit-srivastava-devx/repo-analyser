@@ -85,7 +85,7 @@ def run_complexity(repos: list[Path], out_dir: Path, churn_csv: Path | None = No
     func_path = out_dir / "complexity_functions.csv"
     write_csv(func_path, all_functions,
               fieldnames=["repo", "file", "function", "nloc", "ccn", "tokens", "params",
-                          "length", "start_line", "end_line"] if all_functions else None)
+                          "length", "start_line", "end_line"])
 
     file_agg = aggregate_by_file(all_functions)
 
@@ -107,7 +107,7 @@ def run_complexity(repos: list[Path], out_dir: Path, churn_csv: Path | None = No
     hotspot_path = out_dir / "complexity_hotspots.csv"
     write_csv(hotspot_path, file_agg,
               fieldnames=["repo", "file", "total_ccn", "max_ccn", "function_count",
-                          "total_nloc", "n_revs", "hotspot_score"] if file_agg else None)
+                          "total_nloc", "n_revs", "hotspot_score"])
 
     if errors:
         write_json(out_dir / "complexity_errors.json", errors)

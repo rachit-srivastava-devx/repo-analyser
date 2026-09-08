@@ -130,6 +130,8 @@ def run_synthesize(repo_names: list[str], out_dir: Path) -> Path:
         })
     rows.sort(key=lambda r: -cast(float, r["risk_score"]))
     out_path = out_dir / "risk_ranking.csv"
-    write_csv(out_path, rows)
+    write_csv(out_path, rows, fieldnames=["repo", "risk_score", "escape_count", "top5_hotspot_sum",
+                                          "exact_dup_file_count", "ci_gate_missing", "test_failure_rate",
+                                          "security_findings", "bus_factor_top_author_share"])
     write_json(out_dir / "risk_weights.json", WEIGHTS)
     return out_path
