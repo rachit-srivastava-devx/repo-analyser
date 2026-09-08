@@ -49,6 +49,29 @@ def test_sql_pairs_convention_end_to_end(tmp_path: Path) -> None:
     assert result.pii_column_match_count == 2  # email + phone_number
 
 
+def test_multi_app_django_repo_has_no_false_positive_duplicates(tmp_path: Path) -> None:
+    """Regression test for the multi-app false-positive: two independent
+    Django apps, each with its own legitimate 0001_initial.py, must not be
+    reported as duplicates through the full analyze_repo() pipeline (every
+    real multi-app Django project has this shape -- this was silently
+    broken before find_duplicate_numbers_by_group scoped the check per
+    app)."""
+    # Distinct content per app so the byte-identical duplicate check
+    # (find_duplicate_files, a real and independently-correct signal) can't
+    # also fire here -- this test isolates the leading-number scoping bug
+    # specifically, not the separate content-hash duplicate check.
+    repo = init_repo(tmp_path / "r")
+    write(repo, "blog/migrations/0001_initial.py", "dependencies = []  # blog app\n")
+    write(repo, "shop/migrations/0001_initial.py", "dependencies = []  # shop app\n")
+    commit_all(repo, "two independent django apps")
+
+    result = analyze_repo(repo)
+    assert result.migration_convention == "django"
+    assert result.migration_file_count == 2
+    assert result.duplicate_migration_count == 0
+    assert result.duplicate_migrations == ""
+
+
 def test_duplicate_and_orphan_reported_through_analyze_repo(tmp_path: Path) -> None:
     repo = init_repo(tmp_path / "r")
     write(repo, "app/migrations/0001_initial.py", "dependencies = []\n")

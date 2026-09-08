@@ -132,7 +132,15 @@ practice, not live execution" shape as `ci_gates.py`/`api_contract/`:
    read); two byte-identical migration files (sha256, same primitive as
    `exact_duplicates.py`, narrowed to migration files specifically); two
    files sharing the same leading migration number (independently created
-   on separate branches, both merged).
+   on separate branches, both merged) -- for Django specifically, this
+   leading-number check is scoped **per app** (keyed the same way as the
+   orphan check above, `p.parent.parent.name`), because every Django app
+   conventionally restarts its own numbering at `0001_initial.py`; without
+   that scoping, any repo with 2+ Django apps -- the normal case for a real
+   Django project -- would get a bogus duplicate hit purely because two
+   unrelated apps each have their own legitimate `0001_initial.py` (a real
+   bug, fixed 2026-09). Paired-SQL migrations have no per-"app" concept, so
+   their duplicate-number check stays unscoped/repo-wide.
 3. **Committed database file/dump hygiene** (`committed_db_file_count`/
    `committed_sql_dump_count`): full git history via `git rev-list
    --objects --all` + `git cat-file -p` (same "full history, not just the
@@ -170,7 +178,18 @@ execution was available when this was built (AGENTS.md §2.2/§8,
 `docs/ARCHITECTURE.md`'s security model). Also explicitly not attempted:
 telling a seed-data fixture holding *real* (vs. synthetic) production data
 apart from static text alone -- not a heuristic this collector can make
-honestly, so it isn't guessed at.
+honestly, so it isn't guessed at. Also not attempted: validating that a
+file matching the Django filename shape (`NNNN_*.py` inside a
+`migrations/` directory) actually *contains* a `Migration` class --
+discovery is filename/dirname-shape-only (`discovery.py`), so a same-shaped
+file with no real `Migration` class at all (e.g. a stray helper script
+someone dropped in `migrations/`) is still counted and classified
+`reversible` (no `RunPython`/`RunSQL` escape hatch found, since none of its
+code is a migration operation at all). A cheap AST check ("does this file
+define a class literally named `Migration`?") was considered but not
+added, to avoid encoding a second, subtly different definition of "is this
+a migration" from the one `classify_django`/`find_django_orphans` already
+apply implicitly -- documented here as a known, accepted gap instead.
 
 ### `ontology.py` — commit classification
 Fully deterministic, two-layer rule table (no LLM): (1) if every file a

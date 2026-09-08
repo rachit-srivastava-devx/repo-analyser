@@ -6,6 +6,7 @@ from repo_analyser.collectors.migration_hygiene.django_orphans import find_djang
 from repo_analyser.collectors.migration_hygiene.orphans import (
     find_duplicate_files,
     find_duplicate_numbers,
+    find_duplicate_numbers_by_group,
 )
 
 from ._migration_hygiene_helpers import write
@@ -38,6 +39,38 @@ def test_same_leading_number_is_a_duplicate(tmp_path: Path) -> None:
     a = write(tmp_path, "app/migrations/0007_add_index.py", "content one\n")
     b = write(tmp_path, "app/migrations/0007_add_column.py", "content two\n")
     dupes = find_duplicate_numbers([a, b])
+    assert dupes == ["0007_add_column.py==0007_add_index.py"]
+
+
+def test_multi_app_django_shared_leading_number_is_not_a_duplicate(tmp_path: Path) -> None:
+    """Two independent, legitimate Django apps each starting their own
+    migration numbering at 0001 (the normal case for any real multi-app
+    Django project) must NOT be flagged as duplicates just because the
+    unscoped, convention-agnostic find_duplicate_numbers would see two
+    "0001"-prefixed files -- analyze_repo scopes this per app via
+    find_duplicate_numbers_by_group, keyed the same way
+    find_django_orphans already groups by app (p.parent.parent.name)."""
+    blog = write(tmp_path, "blog/migrations/0001_initial.py", "dependencies = []\n")
+    shop = write(tmp_path, "shop/migrations/0001_initial.py", "dependencies = []\n")
+    dupes = find_duplicate_numbers_by_group(
+        [blog, shop], key=lambda p: p.parent.parent.name
+    )
+    assert dupes == []
+    # The unscoped function, called directly on the same two paths, is
+    # exactly the bug being fixed here -- confirms the test would have
+    # caught it if find_duplicate_numbers_by_group fell back to it.
+    assert find_duplicate_numbers([blog, shop]) == ["0001_initial.py==0001_initial.py"]
+
+
+def test_same_app_duplicate_still_caught_when_grouped(tmp_path: Path) -> None:
+    """A genuine same-app duplicate (two files in the SAME app sharing a
+    leading number) must still be flagged once grouping is applied."""
+    a = write(tmp_path, "blog/migrations/0007_add_index.py", "dependencies = []\n")
+    b = write(tmp_path, "blog/migrations/0007_add_column.py", "dependencies = []\n")
+    other_app = write(tmp_path, "shop/migrations/0001_initial.py", "dependencies = []\n")
+    dupes = find_duplicate_numbers_by_group(
+        [a, b, other_app], key=lambda p: p.parent.parent.name
+    )
     assert dupes == ["0007_add_column.py==0007_add_index.py"]
 
 
