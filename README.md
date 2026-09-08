@@ -35,7 +35,7 @@ own code.
 | `security` | Committed secrets (full history) + vulnerability patterns | [gitleaks](https://github.com/gitleaks/gitleaks), [semgrep](https://github.com/semgrep/semgrep) |
 | `depgraph` | Internal import graph, circular dependencies | [dependency-cruiser](https://github.com/sverweij/dependency-cruiser) (JS/TS), `ast` (Python), `go list` (Go) |
 | `testquality` | Does the test suite actually pass, right now | real execution: vitest/jest (JS), pytest (Python), `go test` (Go) |
-| `e2e_quality` | Does an E2E suite exist, and is it wired into CI (JS/TS only) | Playwright, Cypress, Selenium/WebdriverIO presence + CI step detection |
+| `e2e_quality` | Does an E2E suite exist, and is it wired into CI (JS/TS only); plus visual-regression, flake-retry, sharding, a11y-in-e2e, trace/video, and Pact contract-fidelity config presence | Playwright, Cypress, Selenium/WebdriverIO presence + CI step detection |
 | `effort` | Per-author/monthly effort mix, candidate toil clusters | derived from `ontology` |
 | `deps_audit` | Known-CVE dependency audit + package staleness | [osv-scanner](https://github.com/google/osv-scanner), `npm outdated` |
 | `supply_chain` | IaC/Dockerfile misconfigurations + CycloneDX SBOM | [Trivy](https://github.com/aquasecurity/trivy) |

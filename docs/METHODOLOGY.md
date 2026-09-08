@@ -815,3 +815,16 @@ own construction failures is less trustworthy than one that shows them.
     consumer (`synthesize.py`, `deep_reports.py`, `exec_deck.py`,
     `trends.py`) is a real feature with its own published-CSV-shape
     sign-off (AGENTS.md §10), not a one-line correction.
+40. **`e2e_quality.py` extended with 6 more static config-presence signals**,
+    per this doc's own item #34 backlog note: visual-regression tooling
+    (`@percy/playwright`/`chromatic`/`toHaveScreenshot`), flake-retry config
+    (a `retries:` key), sharding config (`shard:` key or a `--shard` CI
+    flag), a11y-in-e2e (`@axe-core/playwright`/`axe-playwright-python` --
+    the one signal crossing this module's stated JS/TS-only scope, since
+    the Python binding is the realistic way a11y checks reach an
+    otherwise-JS/TS E2E suite), trace/video-on-failure config, and
+    Pact-based network-mock contract-fidelity presence. All additive to
+    `E2EResult` (5 -> 11 fields, none removed/renamed); the early-return on
+    "no E2E framework detected" was removed so these signals are computed
+    even when no full E2E suite exists (a repo can carry a Pact dependency
+    without one). Same zero-subprocess profile as the original module.

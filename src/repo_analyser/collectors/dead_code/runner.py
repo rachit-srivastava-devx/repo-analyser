@@ -36,8 +36,7 @@ def run_dead_code(repos: list[Path], out_dir: Path) -> Path:
     write_csv(out_path, [_summary_row(r) for r in results], fieldnames=SUMMARY_FIELDS)
 
     finding_rows = [{"repo": r.repo, **asdict(f)} for r in results for f in r.findings]
-    write_csv(out_dir / "dead_code_findings.csv", finding_rows,
-              fieldnames=FINDING_FIELDS if finding_rows else None)
+    write_csv(out_dir / "dead_code_findings.csv", finding_rows, fieldnames=FINDING_FIELDS)
 
     py_checked = [r for r in results if r.dead_code_items_python is not None]
     js_checked = [r for r in results if r.unreferenced_export_count_js is not None]

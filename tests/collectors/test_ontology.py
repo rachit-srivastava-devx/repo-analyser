@@ -147,7 +147,9 @@ class TestRunOntology:
         out_dir = tmp_path / "out"
         out_dir.mkdir()
         csv_path = run_ontology([], out_dir)
-        assert csv_path.exists()
+        assert csv_path.read_text().splitlines() == [
+            "repo,sha,author,date,is_merge,subject,leaf,superclass,matched_rule,primary_dir,file_count"
+        ]
         summary = json.loads((out_dir / "ontology_summary.json").read_text())
         assert summary["total_non_merge_commits"] == 0
         assert summary["other_pct"] == 0.0  # guarded division, not a ZeroDivisionError

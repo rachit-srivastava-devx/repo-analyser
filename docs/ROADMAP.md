@@ -492,14 +492,13 @@ flight in separate worktrees (`tooling_drift`, `agent_skill_quality`, `microserv
 "New collectors" list earlier in this doc, don't duplicate. Prioritized backlog below is
 genuinely additive to that list; picked up in order roughly matching payoff-per-file-touched.
 
-- **`license_compliance.py`** — built (`pip-licenses`/`license-checker`/`cargo-license`/
-  `go-licenses`, dispatched by detected language same as `lint_quality.py`), **not yet merged**:
-  independent verification found the SPDX BSD-3-Clause detector's exact-substring match breaks on
-  real line-wrapped LICENSE text; fix in progress on `worktree-agent-a67506e510d5a7ffc`.
-- **`flag_debt.py`** — built (feature-flag SDK presence + stale/orphaned flag detection, answering
-  polyrepo.md's and microservices.md's feature-flag-SDK-presence rows above), **not yet merged**:
-  verification found an oversized test file and a stale base; split + rebase in progress on
-  `worktree-agent-a435f394ecf0e53f2`.
+- **`license_compliance.py`** — **merged** (`4252f6e`, 2026-09-06; see `CHANGELOG.md`). The
+  SPDX BSD-3-Clause hard-wrap false-negative is fixed (`a237d69`). **Real follow-up filed, not a
+  blocker**: signature matching is unordered (`all(sig in text)` in `spdx_match.py`), which can
+  false-positive Apache-2.0 vs. MPL-2.0 when both licenses' "Version 2.0" phrase appear in the same
+  text — needs an ordered/contiguous match. Pick up as a small fix under this file's Code
+  Quality / License area.
+- **`flag_debt.py`** — **merged** (`68a1206`, 2026-09-06; see `CHANGELOG.md`).
 - **`api_surface_diff.py`** — medium-large, needs the target repo's toolchain to actually build
   (heavier precondition than most collectors here). Covers backward-compat/semver discipline across
   4 checklist files — highest cross-file payoff on this list, but **new external tool deps**

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from dataclasses import dataclass
 from pathlib import Path
 
 import pytest
@@ -152,7 +153,7 @@ class TestRun:
 class TestWriteCsv:
     def test_writes_rows_and_returns_count(self, tmp_path: Path) -> None:
         path = tmp_path / "out.csv"
-        n = write_csv(path, [{"a": 1, "b": 2}, {"a": 3, "b": 4}])
+        n = write_csv(path, [{"a": 1, "b": 2}, {"a": 3, "b": 4}], fieldnames=["a", "b"])
         assert n == 2
         assert path.read_text().splitlines() == ["a,b", "1,2", "3,4"]
 
@@ -162,15 +163,50 @@ class TestWriteCsv:
         assert n == 0
         assert path.read_text().splitlines() == ["a,b"]
 
-    def test_empty_rows_with_no_fieldnames_writes_empty_file(self, tmp_path: Path) -> None:
+    def test_none_fieldnames_raises(self, tmp_path: Path) -> None:
+        # regression guard: write_csv used to fall back to deriving columns
+        # from rows[0], which for an empty rows list produced a headerless
+        # CSV -- a blank first line, indistinguishable downstream from "the
+        # file failed to write." An explicit None must raise, not degrade.
         path = tmp_path / "out.csv"
-        n = write_csv(path, [])
+        with pytest.raises(TypeError, match="fieldnames is required"):
+            write_csv(path, [], fieldnames=None)  # type: ignore[arg-type]
+
+    def test_empty_fieldnames_list_raises(self, tmp_path: Path) -> None:
+        path = tmp_path / "out.csv"
+        with pytest.raises(TypeError, match="fieldnames is required"):
+            write_csv(path, [{"a": 1}], fieldnames=[])
+
+    def test_dataclass_type_derives_fieldnames_in_declaration_order(self, tmp_path: Path) -> None:
+        @dataclass
+        class Sample:
+            zeta: int
+            alpha: int
+            middle: int
+
+        path = tmp_path / "out.csv"
+        n = write_csv(path, [], fieldnames=Sample)
         assert n == 0
-        assert path.exists()  # a caller checking os.path.exists sees a real file, not nothing
+        # declaration order (zeta, alpha, middle), not alphabetical --
+        # dataclasses.fields() preserves the order fields were written in.
+        assert path.read_text().splitlines() == ["zeta,alpha,middle"]
+
+    def test_dataclass_type_with_rows_matches_explicit_list_output(self, tmp_path: Path) -> None:
+        @dataclass
+        class Sample:
+            x: int
+            y: int
+
+        rows = [{"x": 1, "y": 2}, {"x": 3, "y": 4}]
+        via_dataclass = tmp_path / "via_dataclass.csv"
+        via_list = tmp_path / "via_list.csv"
+        write_csv(via_dataclass, rows, fieldnames=Sample)
+        write_csv(via_list, rows, fieldnames=["x", "y"])
+        assert via_dataclass.read_text() == via_list.read_text()
 
     def test_creates_parent_dirs(self, tmp_path: Path) -> None:
         path = tmp_path / "nested" / "deeper" / "out.csv"
-        write_csv(path, [{"a": 1}])
+        write_csv(path, [{"a": 1}], fieldnames=["a"])
         assert path.exists()
 
 

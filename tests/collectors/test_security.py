@@ -111,8 +111,12 @@ class TestRunSecurity:
         out_dir = tmp_path / "out"
         out_dir.mkdir()
         secrets_path, semgrep_path = run_security([repo], out_dir, tmp_path / "tmp")
-        assert secrets_path.exists()
-        assert semgrep_path.exists()
+        assert secrets_path.read_text().splitlines() == [
+            "repo,rule_id,file,commit,author,date,secret_redacted"
+        ]
+        assert semgrep_path.read_text().splitlines() == [
+            "repo,check_id,severity,file,start_line,message"
+        ]
         errors = json.loads((out_dir / "security_errors.json").read_text())
         assert f"{repo.name}:gitleaks" in errors
         assert f"{repo.name}:semgrep" in errors

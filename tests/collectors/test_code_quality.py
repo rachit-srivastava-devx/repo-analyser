@@ -109,3 +109,12 @@ class TestRunCodeQuality:
         assert summary["repos_skipped"] == 1
         assert summary["mean_maintainability_index"] == 88.6  # radon's real, observed output for this snippet
         assert summary["grade_distribution"]["A"] == 1
+
+    def test_empty_repo_list_writes_header_only_csv(self, tmp_path: Path) -> None:
+        out_dir = tmp_path / "out"
+        out_dir.mkdir()
+        out_path = run_code_quality([], out_dir)
+        assert out_path.read_text().splitlines() == [
+            "repo,language,files_analyzed,files_skipped,mean_maintainability_index,"
+            "grade,lowest_file,lowest_file_mi,ran,skip_reason"
+        ]

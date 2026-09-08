@@ -138,7 +138,7 @@ def analyze_repo(repo: Path) -> PerformanceResult:
 def run_performance(repos: list[Path], out_dir: Path) -> Path:
     rows = [asdict(analyze_repo(r)) for r in repos]
     out_path = out_dir / "performance.csv"
-    write_csv(out_path, rows)
+    write_csv(out_path, rows, fieldnames=PerformanceResult)
     with_budget = [r for r in rows if r["has_budget_config"]]
     write_json(out_dir / "performance_summary.json", {
         "repos_total": len(rows),

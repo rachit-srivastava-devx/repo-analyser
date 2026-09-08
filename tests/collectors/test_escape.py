@@ -108,7 +108,9 @@ class TestRunEscapeEndToEnd:
         out_dir = tmp_path / "out"
         out_dir.mkdir()
         out_path = run_escape([repo], out_dir)
-        assert out_path.exists()
+        assert out_path.read_text().splitlines() == [
+            "repo,fix_sha,fix_date,file,introducing_sha,introducing_date,latency_days"
+        ]
         summary = json.loads((out_dir / "escape_summary.json").read_text())
         assert summary["total_escapes_attributed"] == 0
         assert summary["latency_days_median"] is None  # no crash on an empty percentile

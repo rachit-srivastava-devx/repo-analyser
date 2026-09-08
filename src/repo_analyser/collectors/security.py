@@ -113,10 +113,10 @@ def run_security(repos: list[Path], out_dir: Path, tmp_dir: Path) -> tuple[Path,
 
     secrets_path = out_dir / "security_secrets.csv"
     write_csv(secrets_path, [asdict(s) for s in secrets],
-              fieldnames=list(SecretFinding.__annotations__.keys()) if secrets else None)
+              fieldnames=list(SecretFinding.__annotations__.keys()))
     semgrep_path = out_dir / "security_semgrep.csv"
     write_csv(semgrep_path, [asdict(s) for s in semgrep_findings],
-              fieldnames=list(SemgrepFinding.__annotations__.keys()) if semgrep_findings else None)
+              fieldnames=list(SemgrepFinding.__annotations__.keys()))
 
     if errors:
         write_json(out_dir / "security_errors.json", errors)

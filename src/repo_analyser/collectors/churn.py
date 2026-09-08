@@ -68,10 +68,10 @@ def run_churn(repos: list[Path], out_dir: Path, tmp_dir: Path) -> tuple[Path, Pa
             errors[r.name] = str(e)
 
     rev_path = out_dir / "churn_revisions.csv"
-    write_csv(rev_path, all_revisions, fieldnames=["repo", "entity", "n-revs"] if all_revisions else None)
+    write_csv(rev_path, all_revisions, fieldnames=["repo", "entity", "n-revs"])
     coup_path = out_dir / "churn_coupling.csv"
     write_csv(coup_path, all_coupling,
-              fieldnames=["repo", "entity", "coupled", "degree", "average-revs"] if all_coupling else None)
+              fieldnames=["repo", "entity", "coupled", "degree", "average-revs"])
 
     if errors:
         write_json(out_dir / "churn_errors.json", errors)

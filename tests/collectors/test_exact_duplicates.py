@@ -115,7 +115,9 @@ class TestRunExactDuplicates:
         out_dir = tmp_path / "out"
         out_dir.mkdir()
         out_path = run_exact_duplicates([], out_dir)
-        assert out_path.exists()
+        assert out_path.read_text().splitlines() == [
+            "sha256,repo_count,instance_count,relative_paths,repos"
+        ]
         summary = json.loads((out_dir / "exact_duplicate_summary.json").read_text())
         assert summary["cross_repo_identical_groups"] == 0
         assert summary["max_repo_count_for_one_file"] == 0

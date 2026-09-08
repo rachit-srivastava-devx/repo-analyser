@@ -116,3 +116,10 @@ class TestRunSynthesize:
         assert len(rows) == 1
         assert rows[0]["repo"] == "untouched-repo"
         assert rows[0]["escape_count"] == "0"
+
+    def test_empty_repo_names_writes_header_only_csv(self, tmp_path: Path) -> None:
+        out_path = run_synthesize([], tmp_path)
+        assert out_path.read_text().splitlines() == [
+            "repo,risk_score,escape_count,top5_hotspot_sum,exact_dup_file_count,"
+            "ci_gate_missing,test_failure_rate,security_findings,bus_factor_top_author_share"
+        ]

@@ -104,7 +104,7 @@ def analyze_repo(repo: Path) -> CodeQualityResult:
 def run_code_quality(repos: list[Path], out_dir: Path) -> Path:
     rows = [asdict(analyze_repo(r)) for r in repos]
     out_path = out_dir / "code_quality.csv"
-    write_csv(out_path, rows)
+    write_csv(out_path, rows, fieldnames=CodeQualityResult)
     ran = [r for r in rows if r["ran"]]
     write_json(out_dir / "code_quality_summary.json", {
         "repos_analyzed": len(ran),

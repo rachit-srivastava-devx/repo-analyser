@@ -143,7 +143,9 @@ class TestRunSupplyChain:
         out_dir = tmp_path / "out"
         out_dir.mkdir()
         misconfig_path = run_supply_chain([repo], out_dir, tmp_path / "tmp")
-        assert misconfig_path.exists()
+        assert misconfig_path.read_text().splitlines() == [
+            "repo,id,title,severity,target,start_line,message,resolution"
+        ]
         errors = json.loads((out_dir / "supply_chain_errors.json").read_text())
         assert f"{repo.name}:trivy-config" in errors
         assert f"{repo.name}:trivy-sbom" in errors

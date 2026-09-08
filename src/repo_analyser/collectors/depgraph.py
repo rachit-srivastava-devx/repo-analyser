@@ -294,5 +294,5 @@ def run_depgraph(repos: list[Path], out_dir: Path) -> Path:
     # depgraph_raw/<repo>.json, so there's no shared mutable state here.
     rows = [asdict(r) for r in run_concurrent(repos, lambda r: analyze_repo(r, out_dir))]
     out_path = out_dir / "depgraph_summary.csv"
-    write_csv(out_path, rows)
+    write_csv(out_path, rows, fieldnames=RepoDepGraph)
     return out_path

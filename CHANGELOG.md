@@ -6,6 +6,26 @@ reason for the change, not just what changed — recurring mistakes get a rule/A
 
 ## Unreleased
 
+- **Added `flag_debt/` collector**: feature-flag debt detection — stale/orphaned feature flags via
+  SDK usage scanning, `is_enabled()` call-site extraction, and `flags.json`/`.yaml` definition
+  cross-referencing (answers polyrepo.md's and microservices.md's feature-flag-SDK-presence rows).
+  Merge commit `68a1206`. Independently verified in a fresh worktree+venv: 48 scoped + 703
+  full-suite tests, ruff/mypy clean, `selfcheck.sh` 0 FAIL/0 warn, plus adversarial testing
+  (malicious YAML RCE payload blocked via `safe_load`, symlink loop handled, SIGKILL mid-scan left
+  no partial-write corruption, 5000-file repo in 0.18s, idempotent re-runs byte-identical).
+  CLI-wiring left undone per `AGENTS.md` §9 (tracked as a follow-up, not a merge blocker).
+- **Added `license_compliance/` collector**: static LICENSE-file SPDX matching and manifest
+  license-field cross-check (`package.json`, `pyproject.toml`, `Cargo.toml`, etc.), dispatched by
+  detected language. Merge commit `4252f6e`. Fixed a real false-negative in `spdx_match.py`
+  (`a237d69`): BSD-3-Clause's signature phrases are matched as a literal, whitespace-sensitive
+  substring, so hard-wrapped real-world LICENSE text (prose wrapped at ~70-80 columns) was
+  misclassifying as `BSD-2-Clause` or `unknown`; fix collapses whitespace runs before matching.
+  Independently verified in a fresh worktree with a from-scratch venv: 49 scoped + 608 full-suite
+  tests, ruff/mypy clean; the fix was independently reconstructed against a different LICENSE
+  wrap point than the builder's own fixture. **Known follow-up, not a blocker**: signature matching
+  is unordered (`all(sig in text)`), which can false-positive Apache-2.0 vs. MPL-2.0 when a text
+  contains both licenses' "Version 2.0" phrase — needs an ordered/contiguous match, tracked in
+  `docs/ROADMAP.md`.
 - **Added `codeowners_health.py`**: CODEOWNERS coverage/accuracy (monorepo.md, polyrepo.md).
   Glob-matches `CODEOWNERS` rules against the tracked file tree for coverage %; a "team no longer
   exists" staleness check needs the GitHub org API and is named as out of scope, not faked.

@@ -54,7 +54,15 @@ class TestRunChurnRealExecution:
         monkeypatch.setattr(churn, "analyze_repo", boom)
         out_dir = tmp_path / "out"
         out_dir.mkdir()
-        rev_path, _coup_path = run_churn([git_repo], out_dir, tmp_path / "maat_logs")
-        assert rev_path.exists()  # the run completed and wrote (empty) output
+        rev_path, coup_path = run_churn([git_repo], out_dir, tmp_path / "maat_logs")
+        assert rev_path.read_text().splitlines() == ["repo,entity,n-revs"]
+        assert coup_path.read_text().splitlines() == ["repo,entity,coupled,degree,average-revs"]
         errors = json.loads((out_dir / "churn_errors.json").read_text())
         assert errors[git_repo.name] == "simulated code-maat failure"
+
+    def test_empty_repo_list_writes_header_only_csvs(self, tmp_path: Path) -> None:
+        out_dir = tmp_path / "out"
+        out_dir.mkdir()
+        rev_path, coup_path = run_churn([], out_dir, tmp_path / "maat_logs")
+        assert rev_path.read_text().splitlines() == ["repo,entity,n-revs"]
+        assert coup_path.read_text().splitlines() == ["repo,entity,coupled,degree,average-revs"]

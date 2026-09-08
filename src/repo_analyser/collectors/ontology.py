@@ -186,7 +186,7 @@ def run_ontology(repos: list[Path], out_dir: Path) -> Path:
         all_rows.extend(analyze_repo(r))
     rows = [asdict(c) for c in all_rows]
     out_path = out_dir / "ontology_commits.csv"
-    write_csv(out_path, rows)
+    write_csv(out_path, rows, fieldnames=CommitClass)
 
     leaf_counts = Counter(c.leaf for c in all_rows)
     super_counts = Counter(c.superclass for c in all_rows)

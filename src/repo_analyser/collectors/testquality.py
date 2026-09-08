@@ -298,7 +298,7 @@ def run_testquality(repos: list[Path], out_dir: Path, tmp_dir: Path) -> Path:
         result = analyze_repo(r, log_dir=tmp_dir)
         rows.append(asdict(result))
     out_path = out_dir / "testquality_runs.csv"
-    write_csv(out_path, rows)
+    write_csv(out_path, rows, fieldnames=TestRunResult)
 
     ran = [r for r in rows if r["ran"]]
     real_failures = [r for r in ran if r["tests_failed"] > 0]
