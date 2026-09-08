@@ -180,7 +180,10 @@ def run_concurrent(items: Iterable[T], fn: Callable[[T], R], max_workers: int = 
 
 
 def is_git_repo(path: Path) -> bool:
-    return (path / ".git").is_dir()
+    # A worktree's or submodule's .git is a *file* (containing "gitdir: ...")
+    # rather than a directory -- both are real repos, so accept either.
+    git_path = path / ".git"
+    return git_path.is_dir() or git_path.is_file()
 
 
 def discover_repos(target: Path) -> list[Path]:

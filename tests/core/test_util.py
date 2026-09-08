@@ -29,10 +29,17 @@ class TestIsGitRepo:
     def test_false_for_nonexistent_path(self, tmp_path: Path) -> None:
         assert is_git_repo(tmp_path / "does-not-exist") is False
 
+    def test_true_for_worktree_where_dot_git_is_a_file(self, git_worktree: Path) -> None:
+        assert (git_worktree / ".git").is_file()
+        assert is_git_repo(git_worktree) is True
+
 
 class TestDiscoverRepos:
     def test_single_repo_target(self, git_repo: Path) -> None:
         assert discover_repos(git_repo) == [git_repo.resolve()]
+
+    def test_single_worktree_target(self, git_worktree: Path) -> None:
+        assert discover_repos(git_worktree) == [git_worktree.resolve()]
 
     def test_portfolio_target(self, git_portfolio: Path) -> None:
         found = discover_repos(git_portfolio)
