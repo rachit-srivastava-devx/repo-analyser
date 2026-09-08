@@ -982,3 +982,26 @@ own construction failures is less trustworthy than one that shows them.
     "no E2E framework detected" was removed so these signals are computed
     even when no full E2E suite exists (a repo can carry a Pact dependency
     without one). Same zero-subprocess profile as the original module.
+41. **`supply_chain.py`'s real-trivy regression test
+    (`test_dockerfile_running_as_root_is_flagged_for_real`) started failing
+    with zero misconfigs found**, on the same fixture Dockerfile
+    (`FROM ubuntu:20.04` / `USER root`) that used to reliably produce
+    `DS-0002`. Not a trivy policy rename or a disabled-by-default check:
+    running `trivy config --debug` directly showed the scan itself
+    completing in ~1s once it started -- the hang was entirely in an
+    earlier step, trivy checking whether its embedded misconfig-check
+    bundle needs updating against an OCI registry. On a host where that
+    check can't resolve cleanly (this one: no working credential helper),
+    trivy doesn't fail fast, it hangs -- confirmed by finding half a dozen
+    zombie `trivy config` processes still alive minutes after being
+    invoked, none having produced output. That hang ate the whole 180s
+    `run()` timeout in `_trivy_config_repo`, which then `SIGKILL`s the
+    process group per #30's fix -- so the process died before ever
+    reaching its own fallback-to-embedded-checks path, and
+    `run_supply_chain`'s per-repo `try/except` recorded it as a caught
+    error with an empty misconfig list, not a loud failure. Fix: pass
+    `--skip-check-update` to the `trivy config` invocation, which skips
+    the OCI lookup entirely and goes straight to the embedded bundle.
+    Verified directly (`trivy config <fixture> --skip-check-update`
+    finishes in ~2s and itemizes `DS-0002` in the output) before touching
+    the collector.
