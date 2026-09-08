@@ -37,6 +37,60 @@ repo can have CI configured and still have `any_workflow_runs_tests=False`
 `.github/workflows` folder" is a proxy for "is gated," not the property
 itself.
 
+### `api_contract/` — API/schema contract-discipline detection
+Answers `docs/checklist-by-repo-type/single-repo.md`'s "Interface & API
+Contract Stability" row via four independent, static signals — same
+"presence and correctness of practice, not live execution" shape as
+`ci_gates.py`:
+
+1. **Spec presence** (`has_spec`/`spec_kinds`/`spec_file_count`/
+   `spec_files`): OpenAPI/Swagger (conventional root/docs/api filenames,
+   plus a bounded glob for an unconventionally-named file whose content
+   still parses as a dict with `openapi`/`swagger` + `paths` keys), GraphQL
+   SDL (`.graphql`/`.gql`/`.graphqls` files anywhere), or Protobuf (`.proto`
+   files anywhere). All kinds found are reported, not just the first.
+   Walks the real filesystem (like `depgraph.py`/`duplication.py`), not
+   `git ls-files` — a gitignored-but-present spec file still counts; this
+   is a deliberate choice, not an oversight, matching how every other
+   filesystem-walking collector already treats `EXCLUDE_DIR_PARTS` as the
+   only exclusion rule.
+2. **CI breaking-change gating** (`has_breaking_change_check`/
+   `breaking_change_tools`): parses `.github/workflows/*.yml` and matches a
+   `run:`/`uses:` step's text against six known tools' real command shape
+   (`oasdiff breaking`, `buf breaking`, `graphql-inspector`, etc.), after
+   stripping bash comment lines — narrows, does not eliminate, the false
+   positive of an `echo`/string step that merely *mentions* a tool by name.
+3. **Contract-test tooling** (`has_contract_test_tooling`/
+   `contract_test_tools`): Dredd/Prism/Schemathesis/Pact detected via
+   dependency-manifest entries (`package.json`, `requirements.txt`,
+   `pyproject.toml`), known config files/dirs (`dredd.yml`, `pacts/`), or a
+   matching CI step — any one of the three is sufficient.
+4. **Deprecation + sunset convention** (`deprecated_with_sunset_count`/
+   `deprecated_without_sunset_count`): regex scan of each detected spec
+   file's raw text for a deprecation marker (`deprecated: true`,
+   `@deprecated`, `[deprecated = true]`), then a small line-window search
+   around each marker for a sunset signal (`x-sunset`, `x-deprecated-date`,
+   the word "sunset", or a bare ISO-date-shaped string) — clipped so it
+   never crosses into a *different* deprecation marker's own line (a
+   real bug caught while building this: two deprecated fields declared a
+   few lines apart let one's real sunset date get misattributed to its
+   undated neighbor before the window was clipped at the midpoint between
+   markers).
+
+`spec_parse_errors` reports a spec file that exists but fails to parse,
+distinctly from "no spec at all" — a malformed file must not crash the
+collector run, and the deprecation scan still runs against it as plain
+text regardless (the marker/sunset convention is textual, not structural).
+
+**Known limitations, stated plainly**: v1 is static detection only — it
+does not execute oasdiff/graphql-inspector/buf/Dredd/Schemathesis/Pact
+against two live schema versions or a running service, only checks whether
+the repo is configured to. The OpenAPI content-check is a single bounded
+glob keyed on the filename containing "openapi"/"swagger"; a spec with a
+completely unrelated filename and no conventional path is not found. The
+CI-comment-stripping narrows but does not eliminate the false positive of
+an `echo "todo: run oasdiff"`-shaped step being read as a real invocation.
+
 ### `ontology.py` — commit classification
 Fully deterministic, two-layer rule table (no LLM): (1) if every file a
 commit touched matches one unambiguous pattern (lockfile, workflow yaml,
