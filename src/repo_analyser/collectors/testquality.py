@@ -8,18 +8,38 @@ scripts (`test:integration:*`) require live AWS/DB/Redis infrastructure this
 analysis has no access to, and a network-timeout failure there would be
 misreported as a code defect. That scoping is a real limitation, stated
 here rather than hidden -- see docs/METHODOLOGY.md.
+
+Also reports three static signals that are NOT scoped to unit-only, since
+they answer a different, repo-wide question (what test *shape* exists,
+not whether the unit suite passed): test-pyramid shape (unit/integration/
+e2e/unclassified file counts, by directory-name heuristic -- see
+_pyramid_tier), fuzz/property-based test presence (hypothesis/fast-check/
+Go-native-fuzz, presence-only), and snapshot-test overuse (`.snap` file
+count plus a git-churn proxy for how often they get regenerated). All
+three are filesystem/git-history checks, computed the same way regardless
+of whether the unit-test execution above ran, skipped, or failed -- see
+_static_test_signals.
 """
 from __future__ import annotations
 
 import json
 import re
+import subprocess
 import tempfile
 import xml.etree.ElementTree as ET
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, replace
 from pathlib import Path
+from typing import TypedDict
 
-from ..core.lang import TESTQUALITY_SUPPORTED, detect_js_test_runner, detect_repo_language, pick_unit_script
-from ..core.util import run, write_csv, write_json
+from ..core.lang import (
+    EXCLUDE_DIR_PARTS,
+    TEST_FILE_RE,
+    TESTQUALITY_SUPPORTED,
+    detect_js_test_runner,
+    detect_repo_language,
+    pick_unit_script,
+)
+from ..core.util import is_git_repo, run, write_csv, write_json
 
 
 def _detect_node20_bin() -> str | None:
@@ -79,6 +99,20 @@ class TestRunResult:
     skip_reason: str = ""
     node_version_used: str = ""
     failure_mode: str = ""
+    # Test-pyramid shape, fuzz/property-test presence, and snapshot-test
+    # overuse -- see _static_test_signals below. Computed the same way
+    # regardless of ran/skip_reason above: these are filesystem/git-history
+    # questions, not part of the test *execution* result, so a repo that
+    # skipped execution entirely still gets a real answer here.
+    pyramid_unit_files: int = 0
+    pyramid_integration_files: int = 0
+    pyramid_e2e_files: int = 0
+    pyramid_unclassified_files: int = 0
+    has_fuzz_tests: bool = False
+    fuzz_tools: str = ""
+    snapshot_file_count: int = 0
+    snapshot_churn_commits: int = 0
+    snapshot_churn_note: str = ""
 
 
 def _parse_output(runner: str, text: str) -> tuple[int, int, int, str]:
@@ -111,13 +145,19 @@ def _parse_output(runner: str, text: str) -> tuple[int, int, int, str]:
 def analyze_repo(repo: Path, timeout: int = 180, log_dir: Path | None = None) -> TestRunResult:
     lang = detect_repo_language(repo)
     if lang == "python":
-        return _analyze_python_repo(repo, timeout, log_dir)
-    if lang == "go":
-        return _analyze_go_repo(repo, timeout, log_dir)
-    if lang not in ("javascript", "unknown"):
+        result = _analyze_python_repo(repo, timeout, log_dir)
+    elif lang == "go":
+        result = _analyze_go_repo(repo, timeout, log_dir)
+    elif lang not in ("javascript", "unknown"):
         reason = f"language '{lang}' not supported by testquality (supported: {sorted(TESTQUALITY_SUPPORTED)})"
-        return TestRunResult(repo.name, "", False, -1, "", 0, 0, 0, 0.0, reason)
-    return _analyze_js_repo(repo, timeout, log_dir)
+        result = TestRunResult(repo.name, "", False, -1, "", 0, 0, 0, 0.0, reason)
+    else:
+        result = _analyze_js_repo(repo, timeout, log_dir)
+    # Pyramid/fuzz/snapshot signals are independent of which branch above
+    # ran (or skipped) -- a static filesystem+git scan, not a re-run of the
+    # suite -- so they're attached uniformly to every row, including the
+    # early-return skip_reason rows constructed above.
+    return replace(result, **_static_test_signals(repo))
 
 
 # Real regex-scraping of pytest's human-readable text summary used to live
@@ -289,6 +329,229 @@ def _analyze_js_repo(repo: Path, timeout: int, log_dir: Path | None) -> TestRunR
         runner_detected=runner, tests_passed=passed, tests_failed=failed, tests_total=total,
         duration_s=duration, node_version_used=node_version, failure_mode=failure_mode,
     )
+
+
+# --- Test-pyramid shape --------------------------------------------------
+# Directory-name heuristic ONLY, layered on top of TEST_FILE_RE's own
+# already-approximate file-naming match -- explicitly NOT ground truth.
+# Plenty of real repos don't name test directories this way at all (a flat
+# tests/ dir with no tier subfolders, or a framework convention like
+# cypress/e2e/ that TEST_FILE_RE itself doesn't even match -- see that
+# regex's own definition in core/lang.py). Every TEST_FILE_RE match gets a
+# bucket, including "unclassified" -- never silently dropped, and never
+# forced into unit/integration/e2e by default, which would be a *worse*
+# lie than an honest "don't know" bucket.
+PYRAMID_UNIT_SEGMENTS = {"unit", "units"}
+PYRAMID_INTEGRATION_SEGMENTS = {"integration", "integrations"}
+PYRAMID_E2E_SEGMENTS = {"e2e", "e2e-tests", "e2e_tests", "end2end", "end-to-end"}
+
+
+def _pyramid_tier(rel_posix_path: str) -> str:
+    """Which pyramid tier a TEST_FILE_RE-matched path belongs to, by
+    directory name alone. Scans directory segments closest-to-the-file
+    first, so a path naming more than one tier (e.g.
+    "tests/integration/e2e/foo.spec.ts") resolves to the more specific,
+    innermost label ("e2e") rather than the broader outer grouping -- the
+    file itself, not its parent's parent, is what the path is actually
+    claiming. Falls back to "unclassified" -- a real, expected bucket for a
+    repo that names test directories some other way entirely (or not at
+    all), not an error."""
+    segments = [s.lower() for s in rel_posix_path.split("/")[:-1]]
+    for segment in reversed(segments):
+        if segment in PYRAMID_UNIT_SEGMENTS:
+            return "unit"
+        if segment in PYRAMID_INTEGRATION_SEGMENTS:
+            return "integration"
+        if segment in PYRAMID_E2E_SEGMENTS:
+            return "e2e"
+    return "unclassified"
+
+
+def _scan_test_files_and_snapshots(repo: Path) -> tuple[dict[str, int], int]:
+    """One tree walk answering two independent per-file questions -- test-
+    pyramid tier for every TEST_FILE_RE match, and how many .snap files
+    exist -- rather than walking a possibly-50k-file tree twice for two
+    unrelated but equally cheap per-file checks. Same exclude-list and walk
+    shape as detect_repo_language (core/lang.py), so a huge repo's
+    node_modules/vendor/build noise is skipped here exactly like it is
+    everywhere else in this codebase."""
+    pyramid = {"unit": 0, "integration": 0, "e2e": 0, "unclassified": 0}
+    snapshot_files = 0
+    for p in repo.rglob("*"):
+        if not p.is_file() or any(part in EXCLUDE_DIR_PARTS for part in p.parts):
+            continue
+        rel = p.relative_to(repo).as_posix()
+        if TEST_FILE_RE.search(rel):
+            pyramid[_pyramid_tier(rel)] += 1
+        if p.suffix == ".snap":
+            snapshot_files += 1
+    return pyramid, snapshot_files
+
+
+# --- Fuzz / property-based test presence ---------------------------------
+# Presence-only: a dependency-manifest or function-signature grep, not a
+# check that any fuzz target actually runs or finds anything -- that would
+# be a real subprocess-execution feature on the scale of this file's own
+# pytest/go-test/npm-run-script execution above, out of scope here per the
+# roadmap's own "presence-only" wording.
+FUZZ_JS_PACKAGE = "fast-check"
+FUZZ_PYTHON_DEP_RE = re.compile(r"\bhypothesis\b", re.IGNORECASE)
+# Go's own native fuzzing (1.18+) needs no dependency at all -- the signal
+# is a function *signature* convention (name prefix + the testing.F
+# parameter type), not a manifest entry. Requiring the *testing.F parameter
+# (not just a "func Fuzz..." name prefix) rules out an unrelated function
+# that merely happens to start with "Fuzz" (e.g. "func FuzzyMatch(s
+# string) bool") from being counted.
+GO_FUZZ_FUNC_RE = re.compile(r"\bfunc\s+Fuzz\w*\s*\(\s*\w+\s+\*testing\.F\s*\)")
+# Root-level manifests only -- the same stated scope e2e_quality.py already
+# accepts for its own package.json/config-file checks. A nested
+# subproject's own requirements.txt (e.g. a monorepo's backend/
+# subdirectory) is a real, named gap, not a silent one.
+PYTHON_MANIFEST_GLOBS = ("requirements*.txt", "pyproject.toml", "Pipfile", "setup.cfg", "setup.py")
+
+
+def _js_declares_fast_check(repo: Path) -> bool:
+    pkg_path = repo / "package.json"
+    if not pkg_path.exists():
+        return False
+    try:
+        data = json.loads(pkg_path.read_text())
+    except (json.JSONDecodeError, OSError):
+        return False
+    all_deps = {**data.get("dependencies", {}), **data.get("devDependencies", {})}
+    return FUZZ_JS_PACKAGE in all_deps
+
+
+def _python_declares_hypothesis(repo: Path) -> bool:
+    """Dependency-manifest grep, deliberately not a full TOML/requirements
+    parser -- matches this signal's own "presence-only" scope. Checked with
+    a word-boundary regex so the English word "hypothesis" appearing in,
+    say, a project description doesn't also fire; accepted residual
+    false-positive risk: a *different*, hypothesis-ecosystem package (e.g.
+    a "hypothesis-jsonschema" strategy plugin) would also match here --
+    arguably still real evidence of Hypothesis-style property-based
+    testing in the repo, not a wrong answer."""
+    for pattern in PYTHON_MANIFEST_GLOBS:
+        for manifest in repo.glob(pattern):
+            if not manifest.is_file():
+                continue
+            try:
+                text = manifest.read_text(errors="ignore")
+            except OSError:
+                continue
+            if FUZZ_PYTHON_DEP_RE.search(text):
+                return True
+    return False
+
+
+def _go_declares_native_fuzz(repo: Path) -> bool:
+    """Scoped to *_test.go files only -- the only place Go's own tooling
+    will ever recognize a fuzz target -- consistent with
+    _analyze_go_repo's own *_test.go enumeration above."""
+    for p in repo.rglob("*_test.go"):
+        if any(part in EXCLUDE_DIR_PARTS for part in p.parts):
+            continue
+        try:
+            text = p.read_text(errors="ignore")
+        except OSError:
+            continue
+        if GO_FUZZ_FUNC_RE.search(text):
+            return True
+    return False
+
+
+def _fuzz_signal(repo: Path) -> tuple[bool, str]:
+    """Checked across all three ecosystems regardless of the repo's own
+    detect_repo_language() dominant-language verdict -- a JS-dominant
+    monorepo with a Python backend using hypothesis is a real, if
+    uncommon, case this should still answer honestly rather than only
+    checking whichever language happens to have the most files."""
+    tools = []
+    if _python_declares_hypothesis(repo):
+        tools.append("hypothesis")
+    if _js_declares_fast_check(repo):
+        tools.append("fast-check")
+    if _go_declares_native_fuzz(repo):
+        tools.append("go-native-fuzz")
+    return bool(tools), ";".join(tools)
+
+
+# --- Snapshot-test overuse ------------------------------------------------
+# Both numbers below are named, explicitly, as crude proxies -- per
+# docs/checklist-by-repo-type's own framing of snapshot tests as prone to
+# being "rubber-stamped" (--update-snapshots on a real behavior change
+# looks identical, in these counts, to the same command rubber-stamping an
+# actual regression). Neither number can tell those two apart; that is a
+# real, stated limitation of what a static/history scan can answer, not
+# something a smarter regex would fix.
+def _snapshot_churn_commits(repo: Path, timeout: int = 60) -> tuple[int, str]:
+    """Commit-count proxy for "how often do snapshot files get
+    regenerated" -- equivalent to
+    `git log --follow --oneline -- '*.snap' | wc -l` (docs/ROADMAP.md).
+    core.util.run() never shells out through a pipe (AGENTS.md: no
+    shell=True, ever), so the line-count is done natively on captured
+    stdout instead, which is exactly equivalent.
+
+    Returns (count, note). note is "" for an ordinary result -- including a
+    healthy repo that has simply never touched a .snap file, and a real
+    git repo with zero .snap files in history, both of which are real
+    zeros, not failures. count is -1 (never a bare 0, which would look
+    identical to a confirmed empty result) only when git itself could not
+    answer the question at all; note then explains why."""
+    if not is_git_repo(repo):
+        return 0, "not a git repository"
+    try:
+        res = run(["git", "log", "--follow", "--oneline", "--", "*.snap"],
+                   cwd=repo, check=False, timeout=timeout)
+    except (subprocess.TimeoutExpired, OSError) as e:
+        return -1, f"git log could not run: {e}"
+    if res.returncode == 0:
+        return len(res.stdout.splitlines()), ""
+    # A repo with zero commits at all (unborn HEAD) is a real, valid input
+    # (AGENTS.md's edge-case ladder, rung 1: "zero commits") -- git itself
+    # reports this as a non-zero exit with a specific, recognized message
+    # rather than an empty log, so it's distinguished here from a genuine,
+    # undiagnosed git failure instead of being folded into the -1 case.
+    if "does not have any commits yet" in res.stderr or "bad default revision" in res.stderr:
+        return 0, "repo has zero commits"
+    return -1, f"git log failed ({res.returncode}): {res.stderr.strip()[:200]}"
+
+
+class _StaticTestSignals(TypedDict):
+    pyramid_unit_files: int
+    pyramid_integration_files: int
+    pyramid_e2e_files: int
+    pyramid_unclassified_files: int
+    has_fuzz_tests: bool
+    fuzz_tools: str
+    snapshot_file_count: int
+    snapshot_churn_commits: int
+    snapshot_churn_note: str
+
+
+def _static_test_signals(repo: Path) -> _StaticTestSignals:
+    """Test-pyramid shape, fuzz/property-test presence, and snapshot-test
+    overuse (docs/ROADMAP.md's testquality.py extension bullet). Computed
+    independently of which language branch analyze_repo took -- these are
+    filesystem/git-history questions, not a test *execution* result, so
+    even a repo analyze_repo otherwise skips entirely (wrong language, no
+    unit-test script, no node_modules, ...) still gets a real, non-
+    fabricated answer here: none of these three questions depend on being
+    able to actually run the suite, only on what's committed."""
+    pyramid, snapshot_files = _scan_test_files_and_snapshots(repo)
+    has_fuzz, fuzz_tools = _fuzz_signal(repo)
+    churn, churn_note = _snapshot_churn_commits(repo)
+    return {
+        "pyramid_unit_files": pyramid["unit"],
+        "pyramid_integration_files": pyramid["integration"],
+        "pyramid_e2e_files": pyramid["e2e"],
+        "pyramid_unclassified_files": pyramid["unclassified"],
+        "has_fuzz_tests": has_fuzz,
+        "fuzz_tools": fuzz_tools,
+        "snapshot_file_count": snapshot_files,
+        "snapshot_churn_commits": churn,
+        "snapshot_churn_note": churn_note,
+    }
 
 
 def run_testquality(repos: list[Path], out_dir: Path, tmp_dir: Path) -> Path:
