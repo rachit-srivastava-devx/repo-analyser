@@ -30,6 +30,13 @@ dependencies = [
                         # floor-pinned rather than exact because no breaking format
                         # change has been observed yet (unlike mutmut's #24); re-verify
                         # vulture_runner.py's regex against real output before bumping.
+    "interrogate>=1.5",  # doc_quality.py's Python doc-comment-coverage measurement --
+                        # confirmed via `interrogate --help` there's no JSON output, only
+                        # a single-line text summary ("RESULT: PASSED (minimum: 0.0%,
+                        # actual: NN.N%)") parsed by doc_comment_python.py's
+                        # INTERROGATE_RESULT_RE -- same fragility class as vulture's
+                        # parsed-text-output above, floor-pinned for the same reason;
+                        # re-verify that regex against real output before bumping.
 ]
 
 [project.scripts]
