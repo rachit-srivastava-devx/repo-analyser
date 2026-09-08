@@ -1,7 +1,7 @@
 # Handoff — checklist-by-repo-type backlog
 
-Last updated: 2026-09-06, by an interactive session, on hand-off to a scheduled daily run
-(1:00am–10:00am IST, `repo-analyser-checklist-backlog`).
+Last updated: 2026-09-08 (~01:30am IST), by the scheduled run. Two builders in flight — see
+"In-flight" below; this file will be rewritten again at the end of this run with their outcome.
 
 Standing goal (unchanged, multi-day): implement everything in `docs/checklist-by-repo-type/`, to
 find real defects per PR/repo/org. Fan out maximally, one collector per agent, builder→verifier→
@@ -12,6 +12,10 @@ ml-data-science.md, agent-skills.md, ...).
 ## Read this whole file before doing anything. Do not trust any other summary of prior state.
 
 ## Merged to `dev` (real, independently verified — safe to build on)
+
+Re-verified myself via `git log --oneline` at the start of this run (2026-09-08); this list adds
+three collectors that merged sometime after the 2026-09-06 handoff was written but were never
+recorded here — **that gap in itself is a process miss, now closed**:
 
 - `codeowners_health` — merge commit `bb16d47`
 - `dead_code` (+ `vulture>=2.16` base dep) — merge commit `9a003f4`
@@ -26,16 +30,70 @@ ml-data-science.md, agent-skills.md, ...).
   clean. Core BSD-3-Clause hard-wrap fix reconstructed independently with a different LICENSE wrap
   point than the builder's own fixture. A real throwaway merge against `dev` (pre-merge) found zero
   conflicts; full suite against the merged tree: 752 passed, 4 pre-existing skips.
-  **Follow-up filed, not a blocker**: verifier found and reproduced a real Apache-2.0/MPL-2.0
-  false-positive via unordered multi-signature matching in `spdx_match.py` — present since the
-  collector's first commit (`7828e7f`), not introduced by this fix. Needs a real fix (signature
-  matching should require ordered/contiguous match, not just `all(sig in text)`) — pick this up as
-  a small follow-up when back in `single-repo.md`'s Code Quality / License area.
+  **Follow-up in flight this run** (see below): Apache-2.0/MPL-2.0 unordered-signature-match
+  false-positive in `spdx_match.py`.
+- `tooling_drift` — merge commit `866a76a`. Merged between 2026-09-06 and this run; not previously
+  recorded in this file. Not re-verified from scratch this run (no reason to doubt it — it's on
+  `dev`, `dev`'s full suite is green, see below — but if a future run has spare capacity, a fresh
+  independent re-verification of this one specifically would close the gap left by it never having
+  been logged here).
+- `microservices_topology` — merge commit `cce203c`. Same caveat as `tooling_drift` above.
+- `agent_skill_quality` — merge commit `03f4bae` (current `dev` HEAD). Same caveat.
 
-## In-flight
+**Ground truth confirmed this run**: `dev` at `03f4bae`, working tree clean, full suite green —
+`.venv/bin/python3 -m pytest -q` → `845 passed, 5 skipped in 26.41s`. (Must invoke pytest via the
+venv's own binary, `.venv/bin/python3 -m pytest`, not a bare `python3` — each Bash tool call is a
+fresh shell that doesn't retain a prior `source .venv/bin/activate`; a bare `python3 -m pytest` in
+a fresh shell gives 87 false `ModuleNotFoundError` collection errors that look like a broken repo
+but are just an unactivated venv. Noting this so the next run doesn't waste time re-diagnosing it.)
 
-None as of this update — both branches that were mid-verification when this session paused
-(`flag_debt`, `license_compliance`) are now merged, above.
+## Found at the start of this run: substantial uncommitted work sitting in the main `dev` checkout
+
+At session start, `git status` on the main worktree showed **~1127 lines of uncommitted
+modifications across 49 tracked files, plus an entirely new untracked `src/repo_analyser/pr_review/`
++ `tests/pr_review/` module (~1400 LOC)** — sitting directly in the main `dev` working tree, not in
+any of the provisioned `worktree-agent-*` branches. This was not mentioned anywhere in the prior
+version of this file. Best guess: an interactive session built this directly in the main checkout
+(bypassing the worktree-per-branch convention) and never committed before running out of
+time/context.
+
+**This state was broken, not finished-but-uncommitted** — confirmed by actually running the suite
+against it before touching anything: `tests/collectors/test_effort.py` failed to import
+(`from repo_analyser.collectors.inventory import _gini as inventory_gini` — no such symbol exists),
+which aborted test collection entirely (0 tests could run). Separately, `core/util.py`'s
+`is_git_repo`/`discover_repos` had regressed the already-merged worktree-support fix (`119bc29`)
+back to directory-only `.git` detection, and the corresponding test
+(`test_true_for_worktree_where_dot_git_is_a_file`) had been deleted rather than updated — a real,
+confirmed regression, not a stylistic difference.
+
+**Action taken (this run, before any new work)**: rather than discard real-looking work (the
+`pr_review/` module and the `write_csv()` hardening in particular read as careful, intentional
+work — good docstrings, an ADR reference, a coherent design — just abandoned mid-fix) or leave it
+sitting fragile as uncommitted state that a future accidental `git checkout` could destroy, it was
+committed as-is (broken, documented as such) to a new branch:
+**`wip/recovered-uncommitted-20260908`, commit `eeb752f`**. The main `dev` checkout was then
+confirmed clean and returned to its actual HEAD (`03f4bae`) before any further work — `dev` itself
+was never at risk. Full contents and the two confirmed bugs are recorded in that commit's message;
+re-read it (`git show --stat eeb752f` / `git log -1 --format=%B eeb752f`) rather than trusting this
+paragraph if it's more than a few days old.
+
+## In-flight (two builders dispatched this run, in fresh worktrees, independent from each other)
+
+1. **Fix + complete `wip/recovered-uncommitted-20260908`** (the recovered WIP above) — builder
+   briefed to fix both confirmed bugs, review the `pr_review/` module and the three extended
+   collectors (`e2e_quality.py`, `effort.py`, `lint_quality.py`) against `AGENTS.md`'s full bar
+   (not just "does it import"), and run all three verification layers. Working in
+   `.claude/worktrees/fix-wip-pr-review`. Not yet verified independently — do not merge on the
+   builder's self-report alone; dispatch a fresh-worktree verifier first, per standing convention.
+2. **Fix the `spdx_match.py` Apache-2.0/MPL-2.0 unordered-signature-match false-positive**
+   (the follow-up filed against `license_compliance`'s merge, above) — small, isolated fix on a
+   fresh branch `fix/spdx-ordered-signature-match`, working in
+   `.claude/worktrees/fix-spdx-match`. Same rule: independent verifier before merge.
+
+If this file is being read at the start of a *later* run and these are still "in-flight" with no
+newer update below, treat that as a sign the run that dispatched them was interrupted — check
+`git log` on both branches directly for what (if anything) actually landed, rather than assuming
+either finished.
 
 ## CRITICAL — a subagent fabricated an audit this session; re-verify everything
 
@@ -82,7 +140,7 @@ trusting any of these have content:
 | `worktree-agent-ab5386ae4a84474a0` | tooling_drift | polyrepo.md § Consistency Across Repos |
 | `worktree-agent-acbb4cc822014c571` | microservices_topology | polyrepo.md/monorepo.md § Microservices Detection |
 | `worktree-agent-a7ad91cff692319fa` | meta_repo_health | monorepo.md § Multi-Service Health |
-| `worktree-agent-a78b28fab6d5fa882` | pr_review | pr-review.md § Automation & Gates |
+| `worktree-agent-a78b28fab6d5fa882` | pr_review (**superseded** — real pr_review work now exists on `wip/recovered-uncommitted-20260908`, see above; this empty branch is redundant once that lands, safe to delete after) | pr-review.md § Automation & Gates |
 | `worktree-agent-ae44ff77f5ef05440` | notebook_quality | ai-knowledge-base.md / ml-data-science.md |
 | `worktree-agent-aec6e49ab900c53c7` | agent_skill_quality | agent-skills.md |
 | `worktree-agent-a0778b8596908aa53` | (unknown — tip is an old dev commit, no unique work) | none found |
@@ -126,15 +184,21 @@ than proceeding — there is no live user to ask during an unattended scheduled 
 
 ## Immediate next steps for whoever/whatever picks this up
 
-1. `CHANGELOG.md` and `docs/ROADMAP.md` need a quick sync pass: both still describe `flag_debt` and
-   `license_compliance` as in-progress/unmerged as of the last time they were edited. Fix that
-   before adding new entries, so the changelog stays a reliable record.
-2. Pick **one** real backlog item from the empty-branches table above (single-repo.md items first,
-   e.g. `api_contract`, `db_hygiene`, `observability`, `doc_quality`), and build it from scratch —
-   one collector, one builder agent, full builder→verifier→merge pipeline, per `AGENTS.md` §3
-   (edge-case ladder) and §4 (design bar). The `spdx_match.py` Apache-2.0/MPL-2.0 ordered-match
-   follow-up (above) is a smaller, faster pickup if a quick win is preferred first.
-3. Do not fan out builders for more than 1–2 new items per run unless verification capacity for
+1. This run's two in-flight items (above) need independent fresh-worktree verifiers, then merge to
+   `dev` on genuine PASS only. If this run ends before that happens, a later run should check
+   `wip/recovered-uncommitted-20260908` and `fix/spdx-ordered-signature-match` for what actually
+   landed (`git log`) before assuming either is done.
+2. The `CHANGELOG.md`/`docs/ROADMAP.md` sync-pass note from the prior version of this file is now
+   folded into item 1 above (the recovered WIP branch already contains a doc-sync attempt for
+   `flag_debt`/`license_compliance` — the builder fixing that branch should confirm it's still
+   correct once `tooling_drift`/`microservices_topology`/`agent_skill_quality` are accounted for
+   too, since those three are *also* undocumented in `CHANGELOG.md`/`ROADMAP.md` as of this run).
+3. Once both in-flight items resolve (merged or clearly left in-flight with reasons), pick a fresh
+   backlog item from the empty-branches table above (single-repo.md items first — `api_contract`,
+   `db_hygiene`, `observability`, `doc_quality`), build from scratch, full builder→verifier→merge
+   pipeline per `AGENTS.md` §3/§4.
+4. Do not fan out builders for more than 1–2 new items per run unless verification capacity for
    that many is actually available in the same run.
-4. Rewrite this file with real, git-verified state at the end of every run — no claims that
-   haven't been directly checked.
+5. Rewrite this file with real, git-verified state at the end of every run — no claims that
+   haven't been directly checked. This run found a real instance of that rule being skipped (the
+   three undocumented merges above) — don't repeat it.
