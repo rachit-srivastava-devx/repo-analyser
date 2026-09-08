@@ -91,6 +91,106 @@ completely unrelated filename and no conventional path is not found. The
 CI-comment-stripping narrows but does not eliminate the false positive of
 an `echo "todo: run oasdiff"`-shaped step being read as a real invocation.
 
+### `migration_hygiene/` — Data & Persistence Layer static-signal detection
+Answers four of the ~16 criteria in `docs/checklist-by-repo-type/
+single-repo.md`'s "Data & Persistence Layer" section — the ones answerable
+from static repo/git inspection alone, same "presence and correctness of
+practice, not live execution" shape as `ci_gates.py`/`api_contract/`:
+
+1. **Migration reversibility** (`migration_convention`/
+   `migration_file_count`/`reversible_count`/`irreversible_count`/
+   `reversibility_unknown_count`): supports exactly two migration-tool
+   conventions plus one filename convention, chosen because they can be
+   checked precisely without guessing --
+   - **Django** (`*/migrations/NNNN_*.py`): most operations
+     (`AddField`/`CreateModel`/...) are auto-reversible by Django's own
+     framework, so their absence isn't a red flag. Only the two escape
+     hatches where a developer supplies arbitrary forward logic --
+     `RunPython`/`RunSQL` -- can be irreversible, and only when no
+     `reverse_code`/`reverse_sql` companion (positional or keyword) was
+     given. Detected via `ast.parse` (never `exec`/`eval` on a target
+     repo's own code), so this cannot tell whether a *supplied* reverse
+     is *correct*, only whether one exists.
+   - **Alembic** (`*/alembic/versions/*.py`): whether `downgrade()`'s body
+     is a real implementation or just `pass`/a bare docstring/`raise
+     NotImplementedError(...)`. Same limitation: a `downgrade()` that runs
+     but doesn't actually undo `upgrade()` correctly still reads as
+     reversible -- structural presence, not semantic verification.
+   - **Paired plain-SQL** (`NNN_desc.up.sql`/`NNN_desc.down.sql`,
+     Flyway/golang-migrate/dbmate-style): directly checkable -- does a
+     matching `.down.sql` exist, and is it non-empty. This is the one
+     convention where "reversible" is close to a real guarantee rather
+     than a structural proxy.
+   - A repo using none of these three (Rails `db/schema.rb`, a bespoke
+     in-house migrator, etc.) reports `migration_convention="none"` --
+     never a guess.
+2. **Orphaned/duplicate migrations** (`orphaned_migration_count`/
+   `duplicate_migration_count`): a Django migration's `dependencies`
+   naming a same-app sibling never found in the discovered set (a
+   cross-app dependency is deliberately not checked -- resolving another
+   app's real label needs Django's own app registry, not a static file
+   read); two byte-identical migration files (sha256, same primitive as
+   `exact_duplicates.py`, narrowed to migration files specifically); two
+   files sharing the same leading migration number (independently created
+   on separate branches, both merged) -- for Django specifically, this
+   leading-number check is scoped **per app** (keyed the same way as the
+   orphan check above, `p.parent.parent.name`), because every Django app
+   conventionally restarts its own numbering at `0001_initial.py`; without
+   that scoping, any repo with 2+ Django apps -- the normal case for a real
+   Django project -- would get a bogus duplicate hit purely because two
+   unrelated apps each have their own legitimate `0001_initial.py` (a real
+   bug, fixed 2026-09). Paired-SQL migrations have no per-"app" concept, so
+   their duplicate-number check stays unscoped/repo-wide.
+3. **Committed database file/dump hygiene** (`committed_db_file_count`/
+   `committed_sql_dump_count`): full git history via `git rev-list
+   --objects --all` + `git cat-file -p` (same "full history, not just the
+   working tree" mindset as `security.py`'s gitleaks scan) -- a SQLite
+   file confirmed by its real 16-byte magic header (not just the
+   extension: a `.sqlite` file that's actually plain text is not
+   flagged), a SQL dump confirmed by a real `pg_dump`/`mysqldump`
+   signature (header comment, `COPY ... FROM stdin`), never merely
+   "contains INSERT" -- a migration seeding reference data via INSERT is
+   explicitly not conflated with a real dump. Distinct leak vector from
+   `security.py`'s credential-pattern scanning -- this is about data
+   files, not secrets.
+4. **PII/sensitive-data column inventory** (`pii_column_match_count`/
+   `pii_columns_sample`): regex scan of the migration files already
+   discovered for column/field names (SQL `CREATE TABLE`/`ADD COLUMN`,
+   Django's `CreateModel`/`AddField` tuple and kwarg shapes, SQLAlchemy's
+   `Column(...)`) matching a PII-name substring heuristic (email, ssn,
+   phone, dob, password, credit_card, ...). A "here's where to look"
+   inventory, same spirit as `piicatcher`'s tagging idea via static text
+   heuristics, no new dependency -- never a judgment on whether the data
+   is actually protected.
+
+**Known limitations, stated plainly**: this is static file/git-history
+inspection only. It does not connect to a live database, execute a
+migration, or diff a real schema against migration history. The
+checklist's other ~12 criteria in this section -- schema drift, index
+coverage vs. query patterns, connection-pool sizing/exhaustion, query-plan
+regression, row/column-level security policy correctness, encryption at
+rest, backup/restore drills, least-privilege roles, replica-lag
+monitoring, table/index bloat, SQL-injection-specific testing, and
+non-production data masking -- all require a live database connection or
+executing the target repo's own build/test toolchain, and are explicitly
+out of scope for this collector: no human sign-off gate for that kind of
+execution was available when this was built (AGENTS.md §2.2/§8,
+`docs/ARCHITECTURE.md`'s security model). Also explicitly not attempted:
+telling a seed-data fixture holding *real* (vs. synthetic) production data
+apart from static text alone -- not a heuristic this collector can make
+honestly, so it isn't guessed at. Also not attempted: validating that a
+file matching the Django filename shape (`NNNN_*.py` inside a
+`migrations/` directory) actually *contains* a `Migration` class --
+discovery is filename/dirname-shape-only (`discovery.py`), so a same-shaped
+file with no real `Migration` class at all (e.g. a stray helper script
+someone dropped in `migrations/`) is still counted and classified
+`reversible` (no `RunPython`/`RunSQL` escape hatch found, since none of its
+code is a migration operation at all). A cheap AST check ("does this file
+define a class literally named `Migration`?") was considered but not
+added, to avoid encoding a second, subtly different definition of "is this
+a migration" from the one `classify_django`/`find_django_orphans` already
+apply implicitly -- documented here as a known, accepted gap instead.
+
 ### `ontology.py` — commit classification
 Fully deterministic, two-layer rule table (no LLM): (1) if every file a
 commit touched matches one unambiguous pattern (lockfile, workflow yaml,
