@@ -339,6 +339,69 @@ a real, deliberate status reversal from an incidental edit within the
 post-acceptance-modification signal (stated above, repeated here because
 it's the single most likely finding to be over-read); and any nested ADR
 directory structure beyond one flat directory per candidate path.
+### `monorepo_tooling/` — build/task orchestrator detection
+Answers part of `docs/checklist-by-repo-type/monorepo.md`'s "Build System
+Health" section via five independent, static config-presence-and-shape
+signals — same "presence and correctness of practice, not live execution"
+shape as `ci_gates.py`/`api_contract`:
+
+1. **Nx** (`nx_present`/`nx_valid_json`/`nx_has_configured_graph`/
+   `nx_project_json_count`): `nx.json` existence and JSON validity, whether
+   it defines `targetDefaults`/`tasksRunnerOptions`/`namedInputs` (a real,
+   configured project graph vs. a bare scaffold default), and a count of
+   `project.json` files anywhere in the tree as a cheap workspace-project
+   proxy — not Nx's own project-graph algorithm.
+2. **Turborepo** (`turbo_present`/`turbo_valid_json`/`turbo_schema`/
+   `turbo_task_count`): `turbo.json` existence and JSON validity, and
+   which pipeline-definition schema it uses — `tasks` (current, Turbo
+   ≥2.0) or `pipeline` (legacy) — reported, not silently resolved, since a
+   repo mid-migration between the two is a real state.
+3. **Bazel** (`bazel_present`/`bazel_workspace_markers`/
+   `bazel_build_file_count`): presence of `WORKSPACE`/`WORKSPACE.bazel`/
+   `MODULE.bazel` at the repo root (all found are reported — a bzlmod
+   migration can have more than one), plus a bounded, filename-only count
+   of `BUILD`/`BUILD.bazel` files anywhere in the tree. No Starlark
+   parsing.
+4. **Buck2** (`buck_present`/`buck_build_file_count`): `.buckconfig`
+   presence at the root, plus a bounded, filename-only count of `BUCK`
+   files anywhere in the tree.
+5. **Pants** (`pants_present`/`pants_valid_toml`/
+   `pants_has_backend_section`): `pants.toml` existence and a bounded
+   structural proxy for TOML validity (at least one `[section]` header or
+   `key = value` line — not full grammar validation, since this codebase
+   deliberately carries no TOML-parser dependency, the same call already
+   made by `collectors/repo_type/fileio.py`'s `read_toml_has_table` and
+   `collectors/license_compliance/manifest_toml_licenses.py`), and whether
+   a `[GLOBAL]`/`[source]`/`[python]` section is declared (real config vs.
+   a bare stub).
+
+`orchestrators_detected`/`orchestrator_count` report every tool whose
+config file is present, independent of whether it parses; a repo with more
+than one (a real migration state) reports all of them, never just the
+first. `config_parse_errors` reports a config file that exists but fails
+its own validity check, distinctly from "no orchestrator at all"
+(`skip_reason`, populated only when none of the five are present).
+Orchestrator config-file presence is checked at the repo root only
+(matching each tool's own workspace-root convention, and `ci_gates.py`'s
+own root-only `.github/workflows` precedent); `BUILD`/`BUCK`/
+`project.json` files are counted via a single bounded recursive walk
+(`fs_scan.py`, one `rglob` pass regardless of how many tools are being
+checked for) since those legitimately live throughout the tree.
+
+**Known limitations, stated plainly**: v1 is static config-presence-and-
+shape detection only. It does not execute `bazel query`/`nx graph`/
+`turbo --dry-run`/`buck2 uquery`/`pants dependencies`, and it answers none
+of the checklist's other Build System Health criteria — build-graph
+correctness, remote/incremental cache hit rate, cold-vs-warm build time,
+cache correctness (false hits), Bazel BUILD-file hygiene via Buildifier,
+or Nx/Turbo/Buck2/Pants distributed-execution/utilization health. Every one
+of those needs live tool execution against a real build; no sign-off is
+available for them from this pass. A `BUILD`/`BUILD.bazel`/`BUCK` file is
+counted by filename only — content is never parsed, so a file that merely
+shares that name with unrelated content cannot be distinguished from a
+real Bazel/Buck2 BUILD file. A nested monorepo-within-a-monorepo whose own
+workspace config lives below the passed-in repo root is not found, by the
+same root-only-config-file design as above.
 
 ### `ontology.py` — commit classification
 Fully deterministic, two-layer rule table (no LLM): (1) if every file a
