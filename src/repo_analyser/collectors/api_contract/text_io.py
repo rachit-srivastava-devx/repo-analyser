@@ -1,0 +1,18 @@
+"""Safe text reading shared by discovery.py and deprecation.py."""
+from __future__ import annotations
+
+from pathlib import Path
+
+
+def read_text_safe(path: Path) -> tuple[str | None, str | None]:
+    """Returns (text, error). error is set (and text is None) for a file
+    that exists but can't be read as UTF-8 text -- a real, distinct-from-
+    zero-found failure mode (the "unicode in spec file content" edge case
+    is the *success* path here; genuinely undecodable bytes are the
+    failure path)."""
+    try:
+        return path.read_text(encoding="utf-8"), None
+    except UnicodeDecodeError as e:
+        return None, f"{path}: not valid UTF-8 ({e})"
+    except OSError as e:
+        return None, f"{path}: unreadable ({e})"
