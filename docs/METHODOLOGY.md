@@ -191,6 +191,155 @@ added, to avoid encoding a second, subtly different definition of "is this
 a migration" from the one `classify_django`/`find_django_orphans` already
 apply implicitly -- documented here as a known, accepted gap instead.
 
+### `design_docs/` — Architecture & Design Documentation static-signal detection
+Answers a static-inspection-reachable subset of `docs/checklist-by-repo-type/
+single-repo.md`'s "Architecture & Design Documentation" section's 7
+criteria -- same "presence and correctness of practice, not live
+execution/semantic understanding" shape as `ci_gates.py`/`api_contract/`/
+`migration_hygiene/`. Not to be confused with the `doc_quality/` collector
+(merged the same night): that one covers doc-comment coverage + changelog
+discipline, a completely different checklist item -- the two share no
+column names and no overlapping scope.
+
+1. **HLD presence & freshness** (`has_hld`/`hld_docs_found`/
+   `hld_untracked_count`/`hld_days_since_doc_touched`/
+   `hld_days_since_repo_last_commit`/`repo_has_commits`): checks five fixed
+   candidate paths (`docs/ARCHITECTURE.md`, `ARCHITECTURE.md`,
+   `docs/architecture.md`, `docs/design.md`, `docs/HLD.md`) via the
+   filesystem -- every one found is reported, not just the first. Freshness
+   is two independent "days since" numbers (both relative to analysis
+   time, same convention as `inventory.py`'s own `days_since_last_commit`),
+   left for the reader to compare rather than banded into a verdict -- the
+   checklist item asks for a staleness *signal*, not a binary judgment. An
+   HLD doc that exists but has no git history (untracked/uncommitted)
+   still counts as present (matches api_contract's/migration_hygiene's own
+   "filesystem existence, not git ls-files" precedent) but contributes no
+   freshness signal, since freshness is inherently a git-history question
+   an untracked file has no answer to. A genuinely zero-commit repo
+   reports `repo_has_commits=False` and both freshness fields as `None` --
+   never a fabricated "0 days stale".
+
+   **Known filesystem caveat, stated plainly**: `docs/ARCHITECTURE.md` and
+   `docs/architecture.md` differ only by case. On a case-insensitive
+   filesystem (macOS's/Windows's default), both candidates resolve to the
+   same one file and both are reported found; on a case-sensitive
+   filesystem (most CI Linux runners) they are genuinely distinct files if
+   both exist. Not a bug in the check -- inherent to running a fixed
+   candidate list's `is_file()` across platforms with different
+   case-folding, named here rather than silently producing a
+   platform-dependent count with no explanation.
+
+   **Related fix (2026-09 review)**: `hld_untracked_count` used to inherit
+   a phantom-untracked side effect of the caveat above -- git's own
+   pathspec matching in `git log -- <path>` is always case-sensitive even
+   on a case-insensitive filesystem, so a candidate genuinely tracked as
+   `docs/ARCHITECTURE.md` queried via the wrong-case `docs/architecture.md`
+   candidate came back with *no* history and got miscounted as untracked,
+   even though the file is tracked fine. Fixed: `doc_last_commit_epoch`
+   (`git_dates.py`) now retries with git's `:(icase)` pathspec magic only
+   when the exact-case lookup is empty, so it still resolves to the real
+   history. The retry fires only on an empty exact match, so two genuinely
+   distinct, differently-cased tracked files on a case-sensitive filesystem
+   never get their histories blended together.
+
+2. **ADR coverage & discipline** (`has_adr_dir`/`adr_dirs_found`/
+   `adr_file_count`/`adr_files_sample`/`adr_malformed_count`/
+   `adr_with_standard_sections_count`): detects `docs/adr/`,
+   `docs/decisions/`, or `adr/` (this repo's own convention, or generic
+   MADR-style `NNNN-title.md`), non-recursive per directory. Each ADR's
+   text is checked for a context/decision/consequences shape (ATX heading
+   or bold field label, either convention counts -- MADR templates use
+   both). A file that can't be decoded as UTF-8 is counted
+   (`adr_malformed_count`) and excluded from every content-based signal,
+   rather than crashing the collector run.
+
+3. **"Immutable once accepted" signal** (`adr_status_accepted_count`/
+   `adr_status_unknown_count`/`adr_modified_after_acceptance_count`/
+   `adr_acceptance_history_unknown_count`): a windowed label-then-value
+   search (same shape as `api_contract`'s own deprecation-marker/sunset-
+   signal window) finds each ADR's *current* status. For one currently
+   reading "accepted", `git log --follow` walks every commit that touched
+   the file, oldest to newest, reading each revision's content back via
+   `git show` to find the first commit whose content already shows
+   "accepted" -- if any later commit also touched the file, that's
+   reported as a real, confirmed post-acceptance modification. This can
+   only ever report the *fact* of a post-acceptance edit, never *what*
+   changed -- a typo fix and a genuine status reversal look identical to
+   this check, and it is not editorialized into a verdict. `"unknown"` is
+   reported (not a guess of "no") when the file has no git history at all
+   (untracked/uncommitted) or a historical revision's content couldn't be
+   read back.
+
+   **Bug found and fixed (2026-09 review)**: `commit_hashes_touching`
+   (`git_dates.py`) used to ask git for oldest-to-newest order directly
+   (`git log --follow --reverse`). `--follow` combined with `--reverse` is
+   a real git quirk where rename-following silently breaks -- the result
+   truncates to only the commits since the file's *current* path/name,
+   losing everything before a rename. Reproduced directly: a 4-commit
+   history (draft, accept, rename, edit-after-rename) collapsed to the
+   single post-rename commit, so `modified_after_acceptance` never saw the
+   pre-rename accept commit and reported "no" (confidently wrong) for an
+   ADR that genuinely was edited after acceptance. Fixed by dropping
+   `--reverse` from the git invocation (plain `git log --follow` correctly
+   walks the full rename chain, newest-first) and reversing the resulting
+   list in Python instead. Covered by
+   `test_modified_after_acceptance_true_across_a_rename` in
+   `tests/collectors/test_design_docs/test_adr_status_git.py`.
+
+   **Known, accepted limitation (unfixed, documented)**: `detect_status`
+   has no fenced-code-block or blockquote awareness -- an ADR that quotes
+   another ADR's `## Status\n\nAccepted` inside a ```` ``` ```` example
+   block gets counted as genuinely Accepted. Same family of limitation as
+   the typo-fix-vs-real-reversal caveat above: this signal reads status
+   *text*, not document structure, and this is a second concrete way that
+   surfaces. Not fixed in this pass -- the added complexity of fence-
+   tracking wasn't judged worth it for a signal that's already documented
+   as text-only, not semantic.
+
+4. **Decision reversibility tagging** (`adr_reversibility_tagged_count`):
+   of `adr_file_count`, how many ADRs carry an explicit
+   one-way-door/two-way-door/reversible/irreversible tag anywhere in their
+   text (case-insensitive, word-boundary regex -- "reversible" never
+   accidentally matches inside "irreversible": there is no word boundary
+   between the "ir" prefix and the rest of the word).
+
+5. **Runbook/operational-doc coverage** (`has_runbook`/
+   `runbook_docs_found`/`runbook_keyword_categories_found`/
+   `runbook_keyword_category_count`): a dedicated file (`RUNBOOK.md`,
+   `docs/runbook.md`, `docs/operations.md`, `docs/on-call.md`) or a
+   Runbook/Rollback/On-call-shaped README section counts equally -- a
+   small team documenting operations inline in the README is a legitimate
+   choice, not a lesser one. A lightweight keyword-presence signal
+   (deploy/rollback/on-call/known-failure-mode) is then scanned across
+   whichever runbook-ish text was found -- not semantic understanding of
+   whether the procedures are actually correct or current.
+
+`skip_reason` is populated only when none of `has_hld`/`has_adr_dir`/
+`has_runbook` found anything at all -- the "empty repo, no docs at all"
+edge case this collector's build task named explicitly. It says nothing
+about any one signal group on its own (matches `api_contract`'s own
+precedent of tying `skip_reason` to the headline absence case, not every
+possible partial miss): a repo with only a runbook and no HLD/ADRs has
+`skip_reason=""` and a real `has_hld=False`.
+
+**Known limitations, stated plainly**: this is static file/git-history
+inspection only. The checklist's other 3 criteria in this section -- LLD
+completeness, design-vs-implementation drift, and public interface
+documentation -- all require either deep semantic understanding of what
+the code *should* do (an LLD's algorithms/data-structures/state-machines
+match a real implementation), or executing the target repo's own
+toolchain/diagram-generation pipeline against two points in time, and are
+explicitly out of scope for this collector: no human sign-off gate for
+that kind of execution was available when this was built (AGENTS.md
+§2.2/§8, `docs/ARCHITECTURE.md`'s security model). Also not attempted:
+resolving an ADR's rename history beyond what `git log --follow` itself
+can track (a rename `git` can't associate with its prior path breaks the
+commit-ordering walk silently into "unknown", not a crash); distinguishing
+a real, deliberate status reversal from an incidental edit within the
+post-acceptance-modification signal (stated above, repeated here because
+it's the single most likely finding to be over-read); and any nested ADR
+directory structure beyond one flat directory per candidate path.
+
 ### `ontology.py` — commit classification
 Fully deterministic, two-layer rule table (no LLM): (1) if every file a
 commit touched matches one unambiguous pattern (lockfile, workflow yaml,
