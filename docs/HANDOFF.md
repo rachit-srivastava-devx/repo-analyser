@@ -1,210 +1,211 @@
 # Handoff — checklist-by-repo-type backlog
 
-Last updated: 2026-09-08 (~23:00 IST), by the scheduled run, at its actual end. Note: real
-wall-clock time this run spanned far beyond the intended 1:00am–10:00am IST window (the session's
-own clock jumped from ~01:00 IST to ~22:47 IST between two consecutive tool calls with no new work
-in between — likely a long idle/resume gap in the harness, not active work). No new builders were
-dispatched after that gap was discovered; the two already in-flight were let finish, verified, and
-resolved. **A future run should treat "started before the cutoff" builders as needing to *finish*
-promptly — if a run's wall-clock spans an entire day, something outside this task's control paused
-it, and whoever/whatever resumes should re-check the actual clock before doing anything new.**
+Last updated: 2026-09-09 (~02:55 IST), by the scheduled run, at its actual end.
 
 ## Read this whole file before doing anything. Do not trust any other summary of prior state.
 
-## Merged to `dev` (real, independently verified — safe to build on)
+## IMPORTANT — two sessions ran on this repo concurrently tonight, undocumented
 
-Re-verified via `git log --oneline` and a real `pytest`/`ruff`/`mypy` run against `dev`'s actual
-working tree at both the start and the end of this run — not copied forward from any prior file.
+This run (the 1:00am scheduled task) discovered, part-way through, that a **second, separately
+running session was actively building and merging to `dev` in real time**, starting from sometime
+before this run began and continuing until roughly 02:17–02:40 IST, when it appears to have
+stopped or crashed (no further commits, and a verification worktree it had just started setting up
+for `monorepo_tooling` was left with only a fresh `.venv` and nothing else — no test run, no
+report). That session merged **7 collectors/extensions in ~2 hours** (`api_contract`,
+`migration_hygiene`, a `trivy` CI-hang fix, `notebook_quality`, `testquality` extension, `ci_gates`
+extension, `observability`, `doc_quality`, `deps_audit` extension, `design_docs`) without ever
+updating this file. This scheduled run independently re-verified two of the highest-risk/least-
+documented items from that session (`migration_hygiene`, and the still-open `spdx_match` fix) from
+scratch, and finished the one item (`monorepo_tooling`) the other session had built but not merged.
 
-- `codeowners_health` — merge commit `bb16d47`
-- `dead_code` (+ `vulture>=2.16` base dep) — merge commit `9a003f4`
-- `inventory` extension (changelog/staleness) — merge commit `1e7dee1`
-- `flag_debt` — merge commit `68a1206` (2026-09-06)
-- `license_compliance` — merge commit `4252f6e` (2026-09-06). BSD-3-Clause hard-wrap fixed
-  (`a237d69`). **Known false-positive NOT fixed yet** — see "Still blocked" below.
-- `tooling_drift` — merge commit `866a76a`. Merged between 2026-09-06 and this run; not
-  previously recorded in this file (a real process gap — see the prior version of this file, now
-  superseded, for the details of how it was caught). Not re-verified from scratch by this run
-  specifically (no reason to doubt it — `dev`'s full suite is green including its tests — but a
-  from-scratch independent re-verification has still never been done for this one collector
-  specifically; worth doing if a future run has spare capacity and wants to close that gap).
-- `microservices_topology` — merge commit `cce203c`. Same caveat as `tooling_drift`.
-- `agent_skill_quality` — merge commit `03f4bae`. Same caveat as `tooling_drift`.
-- **`pr_review`** (new this run) — merge commit `d1a06fc`. A `pr_review/` module (merge-base
-  resolution, ref verification, numstat/name-status diff parsing, added-line-range extraction,
-  GitHub Actions event parsing, hunk assembly — 13 files, all ≤80 lines) answering
-  `pr-review.md`'s "Automation & Gates" area, plus a hardened `write_csv()` (now requires
-  `fieldnames`: a list or dataclass type, instead of silently deriving an empty header from an
-  empty `rows` list) and extensions to `e2e_quality.py`/`effort.py`/`lint_quality.py`. Full history
-  and context in this branch's own commits (`git log dev` around `d1a06fc`/`608ddc7`/`eeb752f`) —
-  it started as uncommitted, abandoned work found sitting in the main checkout at this run's start
-  (see prior version of this file for that discovery), was fixed (a real regression in
-  `is_git_repo`/`discover_repos` that had undone the already-merged `119bc29` worktree-support fix
-  was restored), and passed independent verification in a fresh worktree+venv before merging: 959
-  passed / 10 skipped / 86% coverage, ruff/mypy clean, selfcheck 0 FAIL/1 confirmed-intentional
-  warn, `pr_review`'s API run against this repo's own real git history with adversarial cases
-  (swapped base/head, invalid ref, one-sided `--base`) all matching its documented contract.
-  **Not wired into `cli.py`** — explicitly allowed by `AGENTS.md` §9, tracked as a follow-up below,
-  not a blocker.
-- The empty placeholder branch `worktree-agent-a78b28fab6d5fa882` (previously earmarked for
-  `pr_review`) was confirmed still empty (`git rev-list --count <merge-base>..branch` → `0`) and
-  deleted along with its worktree, now that real `pr_review` work is merged above.
+**Lesson for whoever runs this next**: if `docs/HANDOFF.md` looks stale relative to `git log
+--oneline dev`, do not assume the file is merely out of date by a normal amount — check whether
+another session might still be live (recent commit timestamps, worktrees with fresh `.venv`s but no
+test output, `git worktree list` entries not mentioned anywhere in this file) before doing anything
+that touches `dev` or this file, to avoid a collision. This run held off starting any new build work
+for over 90 minutes specifically because of this.
 
-**Ground truth confirmed at the end of this run**: `dev` at `d1a06fc`, working tree clean.
-`.venv/bin/ruff check src/ tests/` → exit 0. `.venv/bin/mypy src/` → exit 0, 128 source files.
-`.venv/bin/python3 -m pytest -q` → **964 passed, 5 skipped in 37.68s**.
+## Merged to `dev` this run (independently verified — safe to build on)
 
-**Environment note for whoever runs this next**: always invoke pytest/ruff/mypy via
-`.venv/bin/python3 -m <tool>`, never a bare `python3 -m <tool>` — each Bash tool call in this
-harness is a fresh shell that does not retain a prior `source .venv/bin/activate`, and a bare
-invocation in an unactivated shell gives ~87 false `ModuleNotFoundError` collection errors that
-look like a broken repo but are just an unactivated venv. Wasted real time on this twice across
-recent runs — stop re-diagnosing it.
+- **`migration_hygiene`** — merge commit `8480636` (merged by the other session; independently
+  re-verified from scratch by this run in a fresh worktree+venv, detached at `efc5dc7`, never
+  touching `dev`/the branch myself). PASS: 1063 passed/10 skipped, ruff/mypy clean, 96-100%
+  coverage per file. Adversarially rebuilt the claimed bug fix (multi-app Django false-positive
+  duplicate detection) with an independently-constructed fixture — confirmed the fix is real: a
+  cross-app same-numbered migration (`app1/migrations/0001_initial.py` vs
+  `app2/migrations/0001_initial.py`, legitimate in Django) is no longer flagged, while a genuine
+  same-app duplicate still is. Also verified graceful handling of empty repos, non-Django repos,
+  committed DB files/SQL dumps via git-blob content signatures, and orphaned migrations. Not wired
+  into `cli.py` — allowed per `AGENTS.md` §9, tracked as a follow-up, not a blocker.
+- **`monorepo_tooling`** — merge commit `a21fd78` (completed by this run — the other session had
+  built it at `27b6d3e` and started a verification worktree but never finished or merged it).
+  Independently verified in a fresh worktree+venv: PASS, 1039 passed standalone with 100% coverage
+  on every file in the new package, ruff/mypy clean. **The branch did not merge cleanly onto current
+  `dev`** — one trivial conflict in `docs/METHODOLOGY.md` (both branches added a new `###` doc
+  section at the same anchor point; zero `.py` conflicts) — resolved by concatenating both new
+  sections. Re-ran the full suite after the merge commit: **1358 passed**. Detects Nx/Turborepo/
+  Bazel/Buck2/Pants (any combination) via static config presence/shape only — no live build-graph
+  execution (`bazel query`/`nx graph`/etc.), documented as out of scope in `docs/METHODOLOGY.md`.
+  Verifier built independent fixtures for all 5 tools individually, a two-tool mid-migration repo,
+  malformed configs, a 5000-file BUILD-file scan (0.25s, not pathological), and non-git/nonexistent
+  paths — all handled correctly with no crashes. Not wired into `cli.py` — not a blocker.
+
+## Merged to `dev` by the other session tonight (NOT independently re-verified by this run —
+each carries only that session's own self-report; treat with the usual "verify before trusting"
+discipline before building further on top of any of these)
+
+- `api_contract` — merge commit `f92e1c8`. Static OpenAPI/GraphQL/Protobuf spec + CI breaking-
+  change-tool + contract-test-tool + deprecation-marker detection. Self-reported: 1008 passed/5
+  skipped, 99% coverage on the package, ruff/mypy clean. Self-reported non-blocking follow-ups: its
+  own CI-tool-name detection is narrower than its docstring claims for `graphql-inspector`/
+  `openapi-diff`/`swagger-diff`/`buf breaking` (name/phrase-only, no invocation-shape gating like
+  `oasdiff` gets); `docs/METHODOLOGY.md` says "six known tools" where `patterns.py` defines five.
+- `notebook_quality` (`e2d6e6c`), `testquality` extension (`6d215e2`), `ci_gates` extension
+  (`3cddf15`), `observability` (`e5ed88c`), `doc_quality` (`1b7f613`), `deps_audit` extension
+  (`ee91e79`), `design_docs` (`59fb16d`), a `trivy --skip-check-update` CI-hang fix (`f38e619`) —
+  all self-reported clean by the other session's own commit/merge messages, none independently
+  re-verified by this run. `observability` and `doc_quality` each note their own flat source files
+  were restructured into proper `collectors/<name>/` packages mid-session to respect the ~80-line
+  cap (`6c16722`, `88b09f8`) — worth a quick sanity read before extending either.
+
+**Ground truth confirmed at the end of this run**: `dev` at `a21fd78`, working tree clean.
+`.venv/bin/ruff check src/ tests/` → exit 0. `.venv/bin/mypy src/` → exit 0, 206 source files.
+`.venv/bin/python3 -m pytest -q` → **1358 passed** (run directly by this session, on the actual
+current tip, after the `monorepo_tooling` merge commit — not copied from any self-report).
+
+**Environment note, still true**: always invoke pytest/ruff/mypy via `.venv/bin/python3 -m <tool>`,
+never a bare `python3 -m <tool>` in an unactivated shell (each Bash tool call is a fresh shell).
 
 ## Still blocked / needs real design work (not a quick follow-up)
 
-- **`spdx_match.py`'s Apache-2.0/MPL-2.0 (and likely other shared-phrase) false-positive is NOT
-  fixed.** A builder was dispatched this run (branch `fix/spdx-ordered-signature-match`, commit
-  `ba6e469`, worktree `.claude/worktrees/fix-spdx-match` — left in place, not cleaned up) with an
-  ordered-phrase-scan fix (phrases must appear in declared order, forward through the text).
-  **Independent verification FAILED this fix**: it closes the *one* document-ordering the builder's
-  own regression fixture tested, but a real, adversarially-constructed counter-example (a NOTICE
-  document with a genuine MPL-2.0 license block *preceded* by an unrelated bare mention of "the
-  Apache License") still misclassifies as `Apache-2.0` — confirmed at both the unit level
-  (`match_spdx_id`) and the full collector level (`analyze_repo` against a real fixture repo). Root
-  cause: order-only matching checks phrases appear in sequence, not that they belong to the *same*
-  license fragment — it doesn't check proximity or exclusivity between different licenses' claimed
-  phrase spans. **What's actually needed**: something like a proximity/window bound between a
-  signature's phrases, or excluding a text span already consumed by an earlier, higher-priority
-  match, or matching against license-delimited sections rather than the whole flat text — real
-  design work, not a one-line patch. Also noted in passing: the fix as submitted pushed
-  `spdx_match.py` to 114 lines, over `AGENTS.md` §4's ~80-line-per-file cap (was 74 before), mostly
-  via a long docstring — trim this when the correctness issue is actually resolved.
-  **Do not merge `fix/spdx-ordered-signature-match` as-is.** Pick this up as a real (not quick)
-  backlog item, ideally with the redesign scoped out before a builder is dispatched again.
+- **`spdx_match.py`'s Apache-2.0/MPL-2.0 false-positive is STILL NOT fixed — third attempt also
+  independently verified and REJECTED this run.** Branch `fix/spdx-ordered-signature-match` now has
+  3 commits: `ba6e469` (declared-order matching — verified FAILED, recorded previously), `f0d603c`
+  (section-bounded phrases — never independently verified, made by the other session sometime
+  before this run without any record), `084bd15` ("rank satisfiable signatures by tightest phrase
+  window" — independently verified THIS run, **FAILS**). The tightest-window approach fixes the
+  literal counter-example from the previous rejection but fails a structurally identical sibling:
+  comparing raw character-span widths across signatures with different phrase lengths is inherently
+  biased toward whichever license's signature phrases are shorter, independent of which text is the
+  genuine license grant. Confirmed with an independently-built adversarial fixture (a short, natural
+  sentence bare-mentioning "the Apache License" immediately followed by a genuine MPL-2.0 block —
+  misclassifies as `Apache-2.0`), and confirmed this is not a one-off: the builder's own test suite
+  already contains `test_bare_license_name_mention_does_not_beat_genuine_mit_text`, marked
+  `@pytest.mark.xfail(strict=True)`, whose docstring self-admits the same bug class ships unfixed.
+  File-size cap also still violated: now split across two files, `spdx_match.py` (97 lines) +
+  `spdx_window.py` (111 lines) — worse in aggregate than the single 114-line file from attempt one.
+  **Also newly discovered this run: the branch is now 27 commits stale relative to current `dev`**
+  (built at `03f4bae`) and would need a rebase before any future merge attempt regardless of the
+  correctness fix. **What's actually needed, unchanged from before**: a design that distinguishes a
+  genuine license grant from an incidental name-drop — most likely per-license-section text
+  splitting (find the boundaries of each license's own block and match within them, not comparing
+  window-widths across the whole flat document) — real design work, not another proximity/window
+  metric. **Do not merge `fix/spdx-ordered-signature-match` as-is; do not attempt a fourth
+  window/proximity-based patch — that entire approach family has now failed three times.**
 - **`affected.py`'s need to execute the target repo's own build**: still fully open, no branch
-  exists, no decision made (unchanged from prior versions of this file).
+  exists, no decision made (unchanged for several runs now).
 
 ## In-flight
 
-None — both of this run's two builders finished, both went through independent fresh-worktree
-verification, and both are now resolved (one merged, one correctly rejected and left blocked
-above, not merged). Nothing left mid-verification at the end of this run.
+None. Every item this run touched (2 independent verifications + 1 completed merge) reached a
+resolved PASS/FAIL/merged state. The other session's 9 merges from earlier tonight are also all
+resolved (merged), just not independently re-verified by this run — see the section above.
 
-## CRITICAL — a subagent fabricated an audit in a prior session; re-verify everything
+## CRITICAL — re-verify everything yourself; this has burned real time more than once
 
-A researcher-type subagent was once asked to triage ~21 stale `worktree-agent-*` branches against
-the checklist backlog. It returned a confident, detailed table claiming ~16 of them held
-substantial real work, and recommended pruning only 4–5 as already-merged. Direct verification
-(`git rev-list --count <merge-base-with-dev>..<branch>`, run directly, not delegated) proved this
-almost entirely false: every one of those branches had zero commits beyond its merge-base with
-`dev`. This run independently re-confirmed the same discipline matters: a recovered, uncommitted
-branch's *own first commit message* mischaracterized one of its two "confirmed bugs" (the
-`test_effort.py` import error did not actually reproduce in the real file — see the `pr_review`
-merge entry above) — caught only because the independent verifier re-read the actual file instead
-of trusting the commit message's description of it.
+Binding on every future run, interactive or scheduled: never act on a subagent's (or a prior doc's,
+or a git commit message's) claim that something "already exists", "is already merged", "is broken
+in way X", or has some line count/completeness — re-verify the concrete, checkable fact yourself
+(`git log`, `git diff --stat`, `git rev-list --count`, `wc -l`, actually reading the file). This run
+adds a new instance of the same discipline mattering: this file itself (the version at the start of
+this run) was already stale by ~2.5 hours' worth of undocumented merges from a second concurrent
+session before this run even started reading it — don't assume this file is current just because it
+says "Last updated" recently; cross-check against `git log --oneline dev` regardless.
 
-**Lesson, binding on every future run of this task, interactive or scheduled: never act on a
-subagent's (or a prior doc's, or even a git commit message's) claim that something "already
-exists", "is already merged", "is broken in way X", or has some line count / completeness —
-re-verify the concrete, checkable fact yourself first** (`git log`, `git diff --stat`,
-`git rev-list --count`, `wc -l`, actually reading the file). This is not hypothetical caution: it
-has happened, concretely, in this repo, more than once.
+## Branch inventory (ground truth as of 2026-09-09 02:55 IST — checked directly this run)
 
-## Branch inventory (ground truth as of 2026-09-06 for everything below — NOT re-verified this
-run beyond the two rows noted; re-verify any of these before trusting them if this file is more
-than a few days old)
+**Currently existing branches**: `dev`, `main`, `fix/spdx-ordered-signature-match` (real, rejected
+3x, see above — keep). That's it. Every `worktree-agent-*` placeholder branch that existed at the
+start of this run has now been resolved one way or another:
 
-**Confirmed-merged, already cleaned up**: `worktree-agent-a73e438fdeccf3ba2` (→ `1e7dee1`,
-inventory), `worktree-agent-a9ac04d5ffe5d187d` (→ `bb16d47`, codeowners_health),
-`worktree-agent-a9b47d339fe98a9c1` (→ `9a003f4`, dead_code), `worktree-agent-a78b28fab6d5fa882`
-(pr_review placeholder — confirmed still empty this run, deleted since real pr_review work is now
-merged at `d1a06fc`). Nothing left to do here.
+- Built and merged this run or by the other session tonight: `worktree-agent-a3a1dd75e1f567e87`
+  (→ migration_hygiene, `8480636`), `worktree-agent-a7ad91cff692319fa` (→ monorepo_tooling,
+  `a21fd78`), `worktree-agent-a90ad9c649c40894b` (→ deps_audit extension, `ee91e79`),
+  `worktree-agent-a9605c185393dc252` (→ ci_gates extension, `3cddf15`),
+  `worktree-agent-aa143791fd521cf95` (→ observability, `e5ed88c`),
+  `worktree-agent-aa7e609fbba76c134` (→ testquality extension, `6d215e2`),
+  `worktree-agent-ae44ff77f5ef05440` (→ notebook_quality, `e2d6e6c`),
+  `worktree-agent-aead037b5c4173398` (→ doc_quality/design_docs, `1b7f613`/`59fb16d`),
+  `worktree-agent-a3c9b9f38b56c2b25`/`worktree-agent-a435f394ecf0e53f2`/
+  `worktree-agent-a67506e510d5a7ffc` (all found to be pure ancestors of `dev` already — no unique
+  content, deleted by the other session before this run got to them).
+- `claude/quizzical-bun-c195e7` and `claude/sharp-meitner-c60833` — undocumented leftover branches
+  from the other session (tip = the `setup.sh`/README reformat commit, already on `dev`). Both fully
+  merged (ancestor-of-`dev`); this run deleted `quizzical-bun-c195e7` and its worktree.
+  `sharp-meitner-c60833` was already gone by the time this run checked.
+- All corresponding `.claude/worktrees/agent-*` directories for the above were removed this run
+  after confirming (`git merge-base --is-ancestor`) each tip is fully subsumed by `dev`.
 
-**Empty (zero real commits as of 2026-09-06) — must be BUILT FROM SCRATCH, not rebased/fixed.**
-Branch existing with a plausible name is not evidence of any work done — confirm with
-`git rev-list --count` before trusting any of these still have zero content (not re-checked this
-run):
-
-| Branch | Intended capability | Checklist mapping (approx.) |
-|---|---|---|
-| `worktree-agent-a3995d0eb05f9b070` | api_contract (API/schema breaking-change detection) | single-repo.md § Interface & API Contract |
-| `worktree-agent-a3a1dd75e1f567e87` | db_hygiene | single-repo.md § Data & Persistence Layer |
-| `worktree-agent-aa143791fd521cf95` | observability | single-repo.md § Performance & Resource Efficiency |
-| `worktree-agent-aead037b5c4173398` | doc_quality | single-repo.md § Design Documentation |
-| `worktree-agent-a3c9b9f38b56c2b25` | e2e_quality extension | single-repo.md § Code Quality Metrics (**note**: `e2e_quality.py` itself was already extended this run via the `pr_review` merge — check this branch's actual diff against what's now on `dev` before assuming it's still needed as originally scoped) |
-| `worktree-agent-aa7e609fbba76c134` | testquality extension | single-repo.md § Code Quality Metrics |
-| `worktree-agent-a6b0db9f0550deefb` | lint_quality extension | single-repo.md § Code Quality Metrics (**same note** — `lint_quality.py` was also extended this run) |
-| `worktree-agent-a9605c185393dc252` | ci_gates extension | single-repo.md § Performance Budgets |
-| `worktree-agent-adfeb4b214b2709d5` | effort/churn extension | polyrepo.md § Effort Tracking (**same note** — `effort.py` was also extended this run) |
-| `worktree-agent-a90ad9c649c40894b` | deps_audit extension | polyrepo.md § Dependency Management |
-| `worktree-agent-ab5386ae4a84474a0` | tooling_drift | polyrepo.md § Consistency Across Repos (**superseded** — `tooling_drift` merged at `866a76a`; this empty branch is redundant, safe to delete) |
-| `worktree-agent-acbb4cc822014c571` | microservices_topology | polyrepo.md/monorepo.md § Microservices Detection (**superseded** — merged at `cce203c`; safe to delete) |
-| `worktree-agent-a7ad91cff692319fa` | meta_repo_health | monorepo.md § Multi-Service Health |
-| `worktree-agent-ae44ff77f5ef05440` | notebook_quality | ai-knowledge-base.md / ml-data-science.md |
-| `worktree-agent-aec6e49ab900c53c7` | agent_skill_quality | agent-skills.md (**superseded** — merged at `03f4bae`; safe to delete) |
-| `worktree-agent-a0778b8596908aa53` | (unknown — tip is an old dev commit, no unique work) | none found |
-| `worktree-agent-af6855042a1793670` | dead_code duplicate placeholder (dead_code already merged) | none — safe to delete once confirmed empty |
-
-The three "superseded" rows above (`ab5386ae4a84474a0`, `acbb4cc822014c571`, `aec6e49ab900c53c7`)
-plus the two clearly-dead ones (`a0778b8596908aa53`, `af6855042a1793670`) were **not** deleted this
-run — re-verify each is genuinely empty (`git rev-list --count`) before pruning; this file flags
-them as likely-safe candidates, not as a decision already made. Everything else in the empty table
-is still real, un-started work — build from scratch when picked up, don't rebase these branches.
+**Nothing left in the "empty backlog placeholder" table from prior versions of this file** — every
+row was either built-and-merged tonight, or confirmed as a pure duplicate of dev history and
+deleted. The backlog is NOT exhausted, though — see "Immediate next steps" below; there was simply
+no leftover *placeholder branch* still sitting empty.
 
 ## AGENTS.md §2.2 human-sign-off gate — status
 
-- **api_contract's new external tool deps** (openapi/graphql/proto diff tools): **user approved
-  proceeding on 2026-09-06.** Still need to: pick the specific tool(s), add to `pyproject.toml` with
-  a floor-vs-exact-pin rationale comment (see `vulture`/`mutmut` for the two patterns already used),
-  then actually build the collector — the approval covers the dependency, not a finished collector.
+- **api_contract's new external tool deps**: approved 2026-09-06. The collector as merged
+  (`f92e1c8`) is static-detection-only and added no new dependency, so the approved-but-unused
+  budget (an actual `oasdiff`/`buf breaking`/etc. integration) is still available if anyone wants to
+  build the live-execution version later — that would still need this same approval re-confirmed as
+  still applicable, not re-litigated from scratch.
 - **`affected.py`'s need to execute the target repo's own build**: still fully open, no branch
-  exists, no decision made. If this comes up, stop and record it here rather than proceeding — do
-  not assume approval carries over from the api_contract decision above.
-
-If any *other* new external-tool-dependency or target-repo-execution need comes up that isn't
-covered by an existing recorded decision in this file, **stop and record it here as blocked** rather
-than proceeding — there is no live user to ask during an unattended scheduled run.
+  exists, no decision made. If this comes up, stop and record it here rather than proceeding.
+- No new sign-off-requiring need came up this run beyond the two already tracked above.
 
 ## Standing conventions (unchanged, must carry forward)
 
-- File-size cap ~80 lines/file. One collector = one `collectors/<name>/` package, `__init__.py`
-  re-exports the public API.
+- File-size cap ~80 lines/file (soft target — several merged collectors sit at 85-98 lines with no
+  issue; `spdx_match`'s 97+111-line split above is the kind of case that's still a real problem, not
+  because of the raw number but because it's covering up a correctness gap, not just verbosity).
+- One collector = one `collectors/<name>/` package, `__init__.py` re-exports only the public API.
 - Split test packages need `_<name>_helpers.py` — never a generic `_helpers.py`.
-- Builder→verifier→merge, always. Every builder's self-report gets an independently-dispatched
-  verifier in a **fresh** `git worktree add` (never reusing the builder's worktree/venv) before
-  merge. Never merge on a builder's or a researcher-agent's self-report alone — this run's own
-  `spdx_match.py` fix is a live example of why: the builder's numbers were all genuinely accurate,
-  and the fix was still wrong.
-- CLI-wiring (`cli.py`'s `MODULES`/`run_module` dict, README's module table) is explicitly **not**
-  required for a collector to merge — see `AGENTS.md` §9. Don't block a mergeable collector on it;
-  open a tracked follow-up instead. (`pr_review` and several others remain unwired — fine.)
-- Concurrency is gated by review capacity: don't fan out more new builders in one pass than can
-  actually be independently verified in that same pass.
-- Only merge to `dev`. Never touch `main`, never force-push, never push to `origin` without
-  separate, explicit authorization.
-- Attribution: git commits end with `Co-Authored-By: Claude Sonnet 5 <noreply@anthropic.com>`; PR
-  descriptions end with `🤖 Generated with [Claude Code](https://claude.com/claude-code)`.
+- Builder→verifier→merge, always, in a **fresh** worktree the verifier creates itself (never reusing
+  the builder's own worktree/venv, and — new lesson from tonight — never reusing *any* worktree of
+  unclear/stale provenance either, e.g. one left by a session that may have stalled mid-run).
+- CLI-wiring is explicitly **not** required for a collector to merge (`AGENTS.md` §9). Don't block a
+  mergeable collector on it — open a tracked follow-up instead. Everything merged tonight remains
+  unwired; that's fine and expected.
+- Concurrency is gated by review capacity: don't fan out more new builders than can be independently
+  verified in the same pass. Tonight's twist: also budget for the possibility that *another session
+  entirely* might be consuming review capacity you don't know about — check for live/recent activity
+  before assuming you have the full capacity budget to yourself.
+- Only merge to `dev`. Never touch `main`, never force-push, never push to `origin`.
+- Attribution: commits end with `Co-Authored-By: Claude Sonnet 5 <noreply@anthropic.com>`.
 
 ## Immediate next steps for whoever/whatever picks this up
 
-1. **`spdx_match.py`'s false-positive still needs a real fix** (see "Still blocked" above) — this
-   is the most concrete, well-scoped next item, but it needs actual design thought (proximity/
-   exclusivity-aware matching, or per-license-section matching) before dispatching a builder, not
-   just "try again with the same approach." The existing `fix/spdx-ordered-signature-match` branch
-   and its worktree are left in place for whoever picks this up to build on or reference.
-2. Before picking a brand-new backlog item, spend a few minutes re-verifying the 3 "superseded"
-   empty branches above (`ab5386ae4a84474a0`, `acbb4cc822014c571`, `aec6e49ab900c53c7`) and the 2
-   clearly-dead ones are genuinely empty, then prune them — cheap cleanup, closes real drift in
-   this file.
-3. After that, pick a fresh backlog item from the empty-branches table (single-repo.md items
-   first — `api_contract`, `db_hygiene`, `observability`, `doc_quality`, `meta_repo_health`,
-   `notebook_quality`), build from scratch, full builder→verifier→merge pipeline per `AGENTS.md`
-   §3/§4. Double-check `e2e_quality`/`lint_quality`/`effort` extension branches against what's now
-   already on `dev` (this run extended all three) before assuming they're still needed as
-   originally scoped.
-4. Do not fan out builders for more than 1–2 new items per run unless verification capacity for
-   that many is actually available in the same run.
-5. Rewrite this file with real, git-verified state at the end of every run — no claims that
-   haven't been directly checked. If a run's wall-clock spans an implausibly long window (see the
-   top of this file), say so plainly rather than silently treating it as a normal run.
+1. **`spdx_match` needs a fundamentally different design**, not a fourth window/proximity patch —
+   see "Still blocked" above. Scope out per-license-section text splitting before dispatching a
+   builder. The existing branch is also now 27 commits stale; a fresh branch off current `dev` is
+   probably cleaner than rebasing the old one, given the algorithm needs to change anyway.
+2. **Independently re-verify the 9 items the other session merged tonight without any independent
+   verification** (`api_contract`, `notebook_quality`, `testquality` ext, `ci_gates` ext,
+   `observability`, `doc_quality`, `deps_audit` ext, `design_docs`, the `trivy` fix) — not urgent
+   (all self-reported clean, full suite is green including their tests), but per this repo's own
+   "never merge on self-report alone" rule, none of these have actually had that independent check
+   yet. Worth doing opportunistically when there's spare verification capacity and no new backlog
+   item competing for it.
+3. Re-scan `docs/checklist-by-repo-type/single-repo.md`'s remaining sections against what's now
+   built — most sections now have at least partial coverage, but "Codebase Structure & Internal
+   Modularity" (circular deps, layering/boundary enforcement, god-class detection, fan-in/fan-out —
+   partially covered by the pre-existing `depgraph.py`/`flag_debt`, not fully audited this run) and
+   "Compliance, Privacy & Accessibility" (GDPR/CCPA flows, a11y, audit logging — largely needs live
+   execution, likely a similar sign-off-gate situation as `affected.py`) haven't been checked
+   carefully. `polyrepo.md` and `monorepo.md` are in much better shape after tonight but not
+   audited section-by-section either. The full `docs/checklist-by-repo-type/` directory has ~24
+   files total; this project's scope per the scheduled task's own priority order only covers
+   single-repo/polyrepo/monorepo/pr-review/ai-knowledge-base/ml-data-science/agent-skills — the
+   backlog is **not** close to exhausted; do not consider disabling this scheduled task yet.
+4. Do not fan out more than 1-2 new builders per run unless verification capacity is confirmed
+   available — and confirm no other session is concurrently active first (see the top of this file).
+5. Rewrite this file with real, git-verified state at the end of every run.
