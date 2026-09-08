@@ -24,6 +24,20 @@ guessed): `trivy config` only lists FAILED checks in `Misconfigurations`
 CycloneDX's `components` array needs a real lockfile present to produce
 anything -- a bare `package.json` with no `package-lock.json` yields zero
 components, the same lockfile-only limitation deps_audit.py already has.
+
+`trivy config` passes `--skip-check-update`: before scanning anything,
+trivy tries to verify its embedded misconfig-check bundle against an OCI
+registry, and on a host where that lookup can't complete cleanly (no
+working credential helper, or blocked egress) it hangs rather than failing
+fast -- confirmed live: `trivy config` on a two-line Dockerfile hung
+indefinitely while `--debug` showed it stuck before any scan started, only
+proceeding once an external signal cancelled the OCI call, at which point
+it fell back to embedded checks and finished the actual scan in ~1s. Left
+unpatched, this eats the whole `run()` timeout above and the call gets
+SIGKILLed before trivy ever falls back to its embedded checks, so
+`_trivy_config_repo` returns zero misconfigs -- not because DS-0002 or any
+other check stopped firing, but because the scan itself never ran. See
+docs/METHODOLOGY.md's bug log.
 """
 from __future__ import annotations
 
@@ -48,7 +62,8 @@ class MisconfigFinding:
 
 def _trivy_config_repo(repo: Path, tmp_dir: Path) -> list[MisconfigFinding]:
     report = tmp_dir / f"{repo.name}.trivy-config.json"
-    run(["trivy", "config", str(repo), "--format", "json", "--output", str(report), "--quiet"],
+    run(["trivy", "config", str(repo), "--format", "json", "--output", str(report), "--quiet",
+         "--skip-check-update"],
         check=False, timeout=180)
     if not report.exists() or not report.read_text().strip():
         return []
