@@ -62,3 +62,29 @@ ISC_TEXT = (
 )
 UNLICENSE_TEXT = "This is free and unencumbered software released into the public domain.\n"
 CC0_TEXT = "Creative Commons Legal Code\n\nCC0 1.0 Universal\n"
+# A realistic NOTICE-style document: real MPL-2.0 license text (its own
+# "Mozilla Public License" ... "Version 2.0" pair, in order), followed by
+# a passing mention of "the Apache License" with no second "Version 2.0"
+# of its own. Apache-2.0's signature is ("Apache License", "Version 2.0")
+# -- both phrases are literally present *somewhere* in this text (the
+# "Version 2.0" belongs to MPL's own clause), and Apache-2.0 is checked
+# before MPL-2.0 in SPDX_SIGNATURES, so the old "all(p in text)" check
+# misclassified this as Apache-2.0. It's really MPL-2.0: the document's
+# own "Version 2.0" precedes "Apache License", so ordered matching finds
+# no "Version 2.0" *after* "Apache License" and correctly falls through.
+APACHE_MPL_FALSE_POSITIVE_TEXT = (
+    "Mozilla Public License Version 2.0\n==================================\n\n"
+    "This Source Code Form is subject to the terms of the Mozilla Public\n"
+    "License, v. 2.0. If a copy of the MPL was not distributed with this\n"
+    "file, You can obtain one at http://mozilla.org/MPL/2.0/.\n\n"
+    "Portions of this repository were vendored in from a dependency\n"
+    "distributed under the terms of the Apache License; see NOTICE.\n"
+)
+# BSD-2-Clause's two signature phrases, present but in the REVERSE of
+# their declared order (clause 2's phrase, then clause 1's) -- must NOT
+# match BSD-2-Clause (nor BSD-3-Clause): a real BSD license's clauses are
+# numbered and always appear source-code-clause-first.
+BSD_2_REVERSED_ORDER_TEXT = (
+    "Redistributions in binary form must reproduce the above copyright notice.\n"
+    "Redistributions of source code must retain the above copyright notice.\n"
+)

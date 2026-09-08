@@ -20,6 +20,25 @@ in the wild. A literal contiguous substring check would then false-
 negative a genuine license into "unknown"; collapsing whitespace first
 makes the match tolerant of wherever the wrap happened to fall, without
 weakening the case-sensitivity above.
+
+A multi-phrase signature's phrases must be found in the SAME relative
+order they're declared in SPDX_SIGNATURES, each subsequent phrase
+starting at or after the previous phrase's end -- a single left-to-right
+scan per signature, not an independent "is this phrase anywhere in the
+whole text" check per phrase. The latter (originally `all(p in text for
+p in phrases)`) is a real false-positive class, not a hypothetical one:
+Apache-2.0's signature is ("Apache License", "Version 2.0") and MPL-2.0's
+is ("Mozilla Public License", "Version 2.0") -- both share the literal
+phrase "Version 2.0". A NOTICE-style document that mentions the Mozilla
+Public License (with its own "Version 2.0") and *separately*, later,
+mentions "the Apache License" with no second "Version 2.0" of its own
+would satisfy Apache-2.0's two phrases "anywhere, any order" (both are
+literally present somewhere in the text) despite never containing real
+Apache-2.0 license text -- and since Apache-2.0 is checked before MPL-2.0
+below, it would win the false match. Requiring ordered, forward-only
+matching closes that: Apache-2.0's "Version 2.0" phrase must appear at
+or after its "Apache License" phrase, which the MPL-only text does not
+satisfy.
 """
 from __future__ import annotations
 
@@ -62,13 +81,34 @@ _NORMALIZED_SIGNATURES: tuple[tuple[str, tuple[str, ...]], ...] = tuple(
 )
 
 
+def _signatures_match_in_order(text: str, signatures: tuple[str, ...]) -> bool:
+    """True iff every phrase in `signatures` is found in `text`, each
+    subsequent phrase starting at or after the previous phrase's end --
+    a single forward scan through `text`, not an independent whole-text
+    search per phrase. This is what makes a multi-phrase signature mean
+    "this text contains these clauses in this relative order" (the real
+    structure of a license document) rather than "these phrases are each
+    present somewhere, in any order, at any distance" (satisfiable by
+    unrelated text that happens to quote fragments of two different
+    licenses -- see the Apache-2.0/MPL-2.0 "Version 2.0" case in this
+    module's docstring).
+    """
+    cursor = 0
+    for signature in signatures:
+        found_at = text.find(signature, cursor)
+        if found_at == -1:
+            return False
+        cursor = found_at + len(signature)
+    return True
+
+
 def match_spdx_id(text: str) -> str:
     """Return the first SPDX id whose full signature is present in text,
-    else "unknown". Never raises -- an empty or garbage text simply
-    satisfies no signature.
+    with its phrases in declared order, else "unknown". Never raises --
+    an empty or garbage text simply satisfies no signature.
     """
     normalized_text = _collapse_whitespace(text)
     for spdx_id, signatures in _NORMALIZED_SIGNATURES:
-        if all(signature in normalized_text for signature in signatures):
+        if _signatures_match_in_order(normalized_text, signatures):
             return spdx_id
     return "unknown"
