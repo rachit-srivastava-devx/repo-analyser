@@ -29,7 +29,7 @@ def iter_source_files(repo: Path) -> list[Path]:
     further (e.g. by suffix) rather than re-walking."""
     out: list[Path] = []
     for p in repo.rglob("*"):
-        if any(part in EXCLUDE_DIR_PARTS for part in p.parts):
+        if any(part in EXCLUDE_DIR_PARTS for part in p.relative_to(repo).parts):
             continue
         if p.is_file() and p.suffix in SOURCE_EXTENSIONS:
             out.append(p)
