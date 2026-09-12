@@ -25,7 +25,7 @@ own code.
 | Module | Question it answers | Tool(s) |
 |---|---|---|
 | `inventory` | Which repos are active/dormant, who owns them, bus-factor risk | `git log` |
-| `ci_gates` | Does CI actually run tests, or just deploy | `.github/workflows` parser |
+| `ci_gates` | Does CI actually run tests, or just deploy; plus pre-commit hook presence (`.pre-commit-config.yaml`, `.husky/`, `lint-staged`) and lockfile discipline (`npm ci` vs. `npm install`, `poetry check`, `go mod verify` in CI) | `.github/workflows` parser |
 | `ontology` | What does the work actually consist of (features vs. fixes vs. ops) | deterministic rule classifier |
 | `escape` | How often does a bug ship, and how long does it live in prod | SZZ algorithm (PyDriller + `git blame`) |
 | `churn` | Which files change most, which files change *together* | [code-maat](https://github.com/adamtornhill/code-maat) |
@@ -34,15 +34,22 @@ own code.
 | `exact_duplicates` | Byte-identical files across repos (stricter than jscpd) | sha256 |
 | `security` | Committed secrets (full history) + vulnerability patterns | [gitleaks](https://github.com/gitleaks/gitleaks), [semgrep](https://github.com/semgrep/semgrep) |
 | `depgraph` | Internal import graph, circular dependencies | [dependency-cruiser](https://github.com/sverweij/dependency-cruiser) (JS/TS), `ast` (Python), `go list` (Go) |
-| `testquality` | Does the test suite actually pass, right now | real execution: vitest/jest (JS), pytest (Python), `go test` (Go) |
-| `e2e_quality` | Does an E2E suite exist, and is it wired into CI (JS/TS only); plus visual-regression, flake-retry, sharding, a11y-in-e2e, trace/video, and Pact contract-fidelity config presence | Playwright, Cypress, Selenium/WebdriverIO presence + CI step detection |
+| `testquality` | Does the test suite actually pass, right now; plus test-pyramid shape (unit / integration / e2e by directory heuristic), fuzz/property-based test presence, snapshot-test overuse signal | real execution: vitest/jest (JS), pytest (Python), `go test` (Go) |
+| `e2e_quality` | Does an E2E suite exist and is it wired into CI; plus visual-regression config, flake-retry config, sharding config, a11y-in-e2e, trace/video-on-failure, and Pact consumer-contract fidelity | Playwright, Cypress, Selenium/WebdriverIO presence + CI step detection |
 | `effort` | Per-author/monthly effort mix, candidate toil clusters | derived from `ontology` |
-| `deps_audit` | Known-CVE dependency audit + package staleness | [osv-scanner](https://github.com/google/osv-scanner), `npm outdated` |
+| `deps_audit` | Known-CVE dependency audit + package staleness (JS / Python / Go) + license-compliance column flagging anything outside the MIT / Apache-2.0 / BSD / ISC set | [osv-scanner](https://github.com/google/osv-scanner), `npm outdated`, `pip list --outdated`, `go list -u -m` |
 | `supply_chain` | IaC/Dockerfile misconfigurations + CycloneDX SBOM | [Trivy](https://github.com/aquasecurity/trivy) |
 | `lint_quality` | Static analysis with each repo's own linter/config | ESLint (JS), [ruff](https://github.com/astral-sh/ruff) (Python), [staticcheck](https://staticcheck.dev/) (Go) |
 | `code_quality` | Keyless SonarQube-style Maintainability Index (Python only) | [radon](https://radon.readthedocs.io/) |
 | `mutation` | Are the tests behaviorally meaningful, not just passing | [Stryker](https://stryker-mutator.io/) (JS/TS), [mutmut](https://mutmut.readthedocs.io/) (Python) |
 | `performance` | Does a latency/perf budget exist, and is it wired into CI (detection only — no benchmark execution yet, see [`docs/ROADMAP.md`](docs/ROADMAP.md)) | Lighthouse CI / bundlesize / size-limit / artillery config + CI-wiring detection |
+| `api_contract` | OpenAPI / GraphQL / Protobuf schema presence + whether a breaking-change gate is wired into CI + `.changeset/` semver discipline | static filesystem + CI YAML grep |
+| `design_docs` | Architecture and design documentation presence — ADRs, HLD/LLD docs, C4 diagrams, architecture decision records | static filesystem + git-log rename tracking |
+| `doc_quality` | Doc-comment coverage (Python via `interrogate`; JS/TS via `eslint-plugin-jsdoc` config presence) + changelog discipline (`CHANGELOG.md` staleness vs. latest git tag) | `interrogate` (Python), config presence (JS/TS) |
+| `migration_hygiene` | DB migration hygiene — forward/backward safety signals, squash debt, multi-app duplicate-migration detection | static filesystem + framework-specific parsing (Django, Alembic, Flyway, …) |
+| `monorepo_tooling` | Build/task orchestrator detection (Nx, Turborepo, Bazel, Pants, Rush, …) + remote-cache config + CI-affected-project wiring | static filesystem + CI YAML |
+| `notebook_quality` | `.ipynb` hygiene: uncleared outputs committed, suspected secret patterns in cell source, non-linear execution order | pure JSON parsing |
+| `observability` | Structured logging, metrics library, distributed tracing, and k8s liveness/readiness-probe config presence | static filesystem + manifest grep |
 | `knowledge_graph` | A real, exportable graph (duplication + shared-dep + coupling + import edges) | [networkx](https://networkx.org/) → GraphML |
 | `synthesize` | Composite risk ranking across every dimension above | this repo |
 | `per_repo_digest` | One consolidated page per repo, pulling its own findings across every module above | this repo |
@@ -65,6 +72,20 @@ own code.
 - Full formula behind every number, plus real bugs found and fixed while building this:
   [`docs/METHODOLOGY.md`](docs/METHODOLOGY.md). Design decisions: [`docs/adr/`](docs/adr/).
 
+### Merged to `dev`, CLI wiring pending (one batch, not yet in `list-modules`)
+
+Five collectors are merged and have full test suites but are absent from `cli.py`'s `MODULES` /
+`run_module` until a single consolidated wiring pass lands (to avoid N agents colliding on that shared
+file). They will appear in `list-modules` and the table above once that pass merges.
+
+| Module | What it detects |
+|---|---|
+| `repo_type` | Primary type (single\_repo / monorepo / polyrepo / microservices / meta\_repo) + content archetypes (library\_package, infra\_gitops, ml\_data\_science, agent\_skills, mobile\_app, …) — 28 signal-table entries |
+| `codeowners_health` | `CODEOWNERS` presence, path validity, and coverage gaps |
+| `dead_code` | Unreachable exports/symbols — JS/TS (knip) + Python (vulture); Go path via `staticcheck U1000` in progress |
+| `license_compliance` | SPDX license detection + GPL / AGPL / commercial-restriction flagging per file and repo |
+| `flag_debt` | Feature-flag staleness — flags with no removal signal, flags referenced across the whole tree with no gating discipline |
+
 ## Architecture at a glance
 
 Two report views come out of the same collector data, answering two different questions (see
@@ -79,9 +100,9 @@ the other):
 
 ```mermaid
 flowchart LR
-    subgraph Collectors["19 collector modules -- one measured dimension each"]
+    subgraph Collectors["27 collector modules -- one measured dimension each"]
         direction TB
-        Existing["inventory, ci_gates, complexity,\nsecurity, testquality, mutation,\nduplication, deps_audit, performance, ..."]
+        Existing["inventory, ci_gates, complexity,\nsecurity, testquality, mutation,\nduplication, deps_audit, performance,\napi_contract, design_docs, doc_quality,\nmigration_hygiene, monorepo_tooling,\nnotebook_quality, observability, ..."]
     end
 
     Collectors --> Data[("CSV / JSON per module,\nrepo-tagged rows")]
@@ -323,6 +344,41 @@ mypy src/
   philosophy: `AGENTS.md`.
 - CI (`.github/workflows/ci.yml`) runs lint, typecheck, and the full test suite across
   Python 3.10–3.12 on every push and PR.
+
+## Planned / in-flight
+
+Full backlog: [`docs/ROADMAP.md`](docs/ROADMAP.md). Highlights:
+
+**PR-scoped review mode** (`repo-analyser review-pr <repo> [--base REF] [--head REF]`) — a new
+`src/repo_analyser/pr_review/` subpackage answering defects at one PR, not a whole portfolio.
+Wave-by-wave build-out; each module diffs `merge_base..head` (three-dot, matching GitHub's "Files
+changed" view):
+
+| Wave | Modules | Status |
+|---|---|---|
+| 0 | `context.py` (base/head/merge-base resolution), `diff.py` (changed-file model with added-line ranges + rename detection) | not started |
+| 1 | `size.py`, `sast_diff.py` (semgrep --baseline-commit), `secrets_diff.py` (gitleaks git --log-opts), `base_freshness.py`, `ownership.py` | not started |
+| 2 | `deps_diff.py` (CVE + license on new deps), `lint_diff.py`, `affected.py` (nx/turbo/bazel-aware), `changed_file_quality.py` | not started |
+| 3 | `report.py` → `PR_REVIEW.md`; `api_surface_diff.py` / `schema_breaking.py` (pending tool-dep sign-off) | not started |
+| 4 | CLI wiring (`repo-analyser review-pr`) | not started |
+
+**New collectors (upcoming)**
+
+| Collector | What it will measure |
+|---|---|
+| `db_hygiene` | Committed database file/dump detection — `.sqlite`, `.db`, `.sql` blobs in full git history, by size |
+| `meta_repo_health` | `.gitmodules` / `manifest.xml` / `west.yml` lag vs. upstream + broken refs |
+| `microservices_topology` | docker-compose / k8s manifest: service count + cycle check, service mesh / mTLS, network-policy default-deny, canary config, resilience-library presence |
+| `tooling_drift` | Monorepo: same dependency pinned at different versions across packages + lint/format config divergence |
+| `agent_skill_quality` | SKILL.md / MCP tool-definition schema validity + description completeness |
+| `docs_knowledge_hygiene` | Broken links (lychee), readability, frontmatter schema, token-budget discipline for AI KB repos |
+
+**Performance benchmark execution** — `performance.py` currently detects whether a budget is
+_declared and wired_; upcoming: actually run `go test -bench=.`, `pytest-benchmark`, `vitest bench`
+and report real ns/op numbers as new columns on `performance.csv`.
+
+**Process-health monitoring** — `tracemalloc` + `memray` to confirm the Python process doesn't
+accumulate memory across a long portfolio run (open file handles, temp dirs, subprocess objects).
 
 ## Limitations
 
