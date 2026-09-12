@@ -482,6 +482,72 @@ In-degree ranking excludes `node_modules` targets so the "most depended-on
 module" statistic reflects internal architecture, not the fact that every
 file imports React.
 
+### `codebase_modularity/` — module size, god classes, layering enforcement
+Answers the three still-unbuilt rows of `docs/checklist-by-repo-type/
+single-repo.md`'s "Codebase Structure & Internal Modularity" section — the
+other three rows (circular dependency detection, fan-in/fan-out hotspots,
+feature-flag debt) are already covered by `depgraph.py` and `flag_debt/`
+respectively, so this collector doesn't touch either. Three independent
+signals, never averaged into one score:
+
+1. **Module/package size budget** (`oversized_file_count`/
+   `oversized_files`/`oversized_package_count`/`oversized_packages`):
+   language-agnostic, no external tool — a pure filesystem walk + line
+   count over a fixed, reasonable set of source extensions (`.py .js .jsx
+   .ts .tsx .go .rs .java .rb .c .cpp .h .hpp`, kept separate from
+   `core.lang.EXT_TO_LANG` since that list exists to answer "what's the
+   *dominant* language" and is missing C/C++, a different question from
+   "is this a source file worth counting"). An oversized file has
+   physical LOC (`len(text.splitlines())`) > 500; an oversized package is
+   a directory with > 40 source files directly inside it, non-recursive.
+   Both thresholds are deliberate, documented defaults matching common
+   lint-tool conventions (ESLint's `max-lines`, SonarQube Community
+   Edition's file-size gate), not invented numbers.
+2. **God class/module detection** (`god_class_count`/`god_classes`/
+   `god_class_language_supported`): Python-only for v1
+   (`core.lang.GOD_CLASS_SUPPORTED`), same honesty-scoped language-support
+   pattern as `depgraph.py`'s Python/JS/Go split. Parses every `.py` file
+   with `ast` (mirroring `depgraph.py`'s exact error-handling shape:
+   `file.read_text(errors="ignore")` then `ast.parse(...)`, skipping a
+   file with a real syntax error rather than crashing). A class is
+   flagged when its direct method count (top-level `FunctionDef`/
+   `AsyncFunctionDef` children only — a nested class's own methods don't
+   count toward its container) exceeds 20, or its own LOC (`end_lineno -
+   lineno + 1`) exceeds 300. A repo whose dominant detected language
+   isn't Python reports `god_class_count=0`/`god_classes=""` **and**
+   `god_class_language_supported=False` — the boolean exists so "not
+   supported" can never be mistaken for "checked and found none."
+3. **Layering/boundary enforcement** (`layering_tool_detected`/
+   `layering_config_path`): static config-file presence detection only,
+   no external tool invocation — same "presence and shape, not live
+   execution" precedent as `monorepo_tooling/`. Checks the repo root,
+   regardless of detected dominant language, for a `dependency-cruiser`
+   config (`.dependency-cruiser.{js,cjs,json,yml,yaml}`, or a
+   `"dependency-cruiser"`/`"depcruise"` top-level key in `package.json`),
+   an `import-linter` config (`.importlinter`, a `[tool.importlinter]`
+   table in `pyproject.toml` via a regex presence check — no TOML-parser
+   dependency, same call as `monorepo_tooling/pants_signals.py` — or an
+   `[importlinter]` section in `setup.cfg` via stdlib `configparser`,
+   since `setup.cfg` is genuinely INI), or a `go-arch-lint` config
+   (`.go-arch-lint.{yml,yaml}`). `cargo-modules` (Rust) is explicitly not
+   checked — it's a CLI query tool with no persistent config file to
+   detect, a stated scope exclusion rather than a silent omission.
+
+**Known limitations, stated plainly**: god-class detection covers Python
+only — no JS/TS/Go/Rust class-shape analysis yet. Layering detection is
+presence-of-config only: it does not verify the config runs in CI, that
+it passes, or that its rules are non-trivial (an empty/no-op
+dependency-cruiser config still reads as "detected"). Module/package size
+budgets are filename/extension-based only, with no per-language nuance
+(e.g. no special-casing of generated files). `skip_reason` is populated
+only for a genuine precondition failure (the given path doesn't exist, or
+isn't a git repository) — unlike `migration_hygiene/`, there is no "no
+recognized convention" case here, since every repo has *some* files; an
+all-zero result for a small/empty repo is a real finding, not a skip.
+CLI wiring (a `codebase-modularity` subcommand, README/per-repo-digest
+integration) is a follow-up, not required for this collector to exist
+(AGENTS.md §9).
+
 ### `testquality.py` — actually running the tests
 Executes each repo's unit-test script for real and parses the pass/fail
 summary from the runner's own output — not "has a test script" (a proxy)
