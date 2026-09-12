@@ -20,6 +20,20 @@ Report lands at `<out>/deep/<target>-analysis-report.pdf` (default `<out>` is `a
 ⚠️ **Before pointing this at any repo**, read **Security model** below — it executes that repo's
 own code.
 
+## Criteria reference
+
+The **[Repo Audit Field Guide](docs/repo-audit-field-guide.html)** is the companion document that
+lists every criterion this tool either measures or surfaces as a finding — organized by the
+architecture being audited (Single Repo · Monorepo · Polyrepo · Microservices · Meta/Content ·
+Portfolio & Process · Per-Pull-Request), with the keyless tool for each criterion and a note on
+whether it needs a live running system. It is the audit checklist; this README is the tool reference.
+
+Coverage at a glance: the guide tracks **~508 criteria across 74 dimensions and 7 sections**.
+This tool's 27 wired collectors cover the statically-analyzable subset of those criteria — things
+answerable from a local clone alone. Criteria requiring a live cluster, a deployed app, or org-level
+APIs are noted in the guide as out of scope and in [`docs/ROADMAP.md`](docs/ROADMAP.md) as explicit
+non-goals.
+
 ## What it measures
 
 | Module | Question it answers | Tool(s) |
@@ -350,9 +364,9 @@ mypy src/
 Full backlog: [`docs/ROADMAP.md`](docs/ROADMAP.md). Highlights:
 
 **PR-scoped review mode** (`repo-analyser review-pr <repo> [--base REF] [--head REF]`) — a new
-`src/repo_analyser/pr_review/` subpackage answering defects at one PR, not a whole portfolio.
-Wave-by-wave build-out; each module diffs `merge_base..head` (three-dot, matching GitHub's "Files
-changed" view):
+`src/repo_analyser/pr_review/` subpackage implementing the **Per-Pull-Request** section of the
+[field guide](docs/repo-audit-field-guide.html#pr-review) (28 criteria). Each module diffs
+`merge_base..head` (three-dot, matching GitHub's "Files changed" view):
 
 | Wave | Modules | Status |
 |---|---|---|
@@ -362,16 +376,17 @@ changed" view):
 | 3 | `report.py` → `PR_REVIEW.md`; `api_surface_diff.py` / `schema_breaking.py` (pending tool-dep sign-off) | not started |
 | 4 | CLI wiring (`repo-analyser review-pr`) | not started |
 
-**New collectors (upcoming)**
+**New collectors (upcoming)** — each maps to a specific section of the
+[field guide](docs/repo-audit-field-guide.html):
 
-| Collector | What it will measure |
-|---|---|
-| `db_hygiene` | Committed database file/dump detection — `.sqlite`, `.db`, `.sql` blobs in full git history, by size |
-| `meta_repo_health` | `.gitmodules` / `manifest.xml` / `west.yml` lag vs. upstream + broken refs |
-| `microservices_topology` | docker-compose / k8s manifest: service count + cycle check, service mesh / mTLS, network-policy default-deny, canary config, resilience-library presence |
-| `tooling_drift` | Monorepo: same dependency pinned at different versions across packages + lint/format config divergence |
-| `agent_skill_quality` | SKILL.md / MCP tool-definition schema validity + description completeness |
-| `docs_knowledge_hygiene` | Broken links (lychee), readability, frontmatter schema, token-budget discipline for AI KB repos |
+| Collector | What it will measure | Field guide section |
+|---|---|---|
+| `db_hygiene` | Committed database file/dump detection — `.sqlite`, `.db`, `.sql` blobs in full git history, by size | Single Repo → Data & Persistence Layer |
+| `meta_repo_health` | `.gitmodules` / `manifest.xml` / `west.yml` lag vs. upstream + broken refs | Meta & Content-Purpose |
+| `microservices_topology` | docker-compose / k8s manifest: service count + cycle check, service mesh / mTLS, network-policy default-deny, canary config, resilience-library presence | Microservices |
+| `tooling_drift` | Monorepo: same dependency pinned at different versions across packages + lint/format config divergence | Monorepo → Shared Tooling |
+| `agent_skill_quality` | SKILL.md / MCP tool-definition schema validity + description completeness | Meta & Content-Purpose → Agent Skills |
+| `docs_knowledge_hygiene` | Broken links (lychee), readability, frontmatter schema, token-budget discipline for AI KB repos | Meta & Content-Purpose → Docs / AI Knowledge Base |
 
 **Performance benchmark execution** — `performance.py` currently detects whether a budget is
 _declared and wired_; upcoming: actually run `go test -bench=.`, `pytest-benchmark`, `vitest bench`
