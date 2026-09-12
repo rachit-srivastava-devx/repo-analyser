@@ -28,6 +28,13 @@ DEPGRAPH_SUPPORTED = {"javascript", "python", "go"}
 TESTQUALITY_SUPPORTED = {"javascript", "python", "go"}
 MUTATION_SUPPORTED = {"javascript", "python"}
 
+# codebase_modularity's god-class/god-module signal: Python-only for v1
+# (ast.ClassDef method-count/LOC analysis) -- kept explicit here so an
+# unsupported-language repo reports "not supported" via
+# god_class_language_supported=False rather than a silent zero that reads
+# identically to "genuinely found none".
+GOD_CLASS_SUPPORTED = {"python"}
+
 # Shared by ontology.py (file-pattern classification) and mutation.py
 # (excluding test files from mutation-target eligibility -- mutating a
 # test file answers nothing, since there's no separate source left for its
