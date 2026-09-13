@@ -82,6 +82,27 @@ Two more gates, same "go look, don't infer" spirit:
     a shell parser: a real invocation deliberately wrapped in its own
     quotes (e.g. `bash -c "npm ci"`) is not detected. Disclosed, not
     silently wrong.
+  - Quoted-string stripping is deliberately single-line only (a quote never
+    matches across a `\n`) — without that restriction, an *unbalanced*
+    quote from a plain English contraction in one echoed message (e.g.
+    `echo Don't worry`) would greedily span forward past its own line
+    looking for the next matching quote anywhere later in the script,
+    silently swallowing a genuine, unrelated `npm ci` step sitting in
+    between and misreporting an actually-enforced lockfile as unverified.
+    The single-line restriction fixes that, but trades it for the
+    symmetric, opposite-direction limitation: a *genuine* multi-line quoted
+    string (e.g. a real `echo "release notes:\nnpm ci\nwas considered but
+    not used"` spanning several physical lines) is no longer recognized as
+    one quoted span at all, so a line inside it that happens to contain
+    command-shaped text can be wrongly counted as a real invocation — a
+    false positive, symmetric to (not worse than) the `bash -c "npm ci"`
+    false negative above. Both are disclosed, known limitations of the same
+    single-line design choice, not silently wrong; distinguishing the two
+    "unbalanced quote" shapes in general needs real shell-token-aware
+    parsing, not another regex tweak, and is out of scope here (see
+    `docs/HANDOFF.md`'s `spdx_match.py` precedent: after three patch
+    attempts on the same regex/heuristic approach family, document the
+    residual limitation instead of attempting a fourth).
   - Only npm/poetry/cargo/go have a wired-up enforcement command today;
     pnpm/yarn/pipenv lockfiles are detected as *present* but can never show
     as *verified* — a real coverage gap, not a claim that those managers

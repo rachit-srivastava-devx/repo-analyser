@@ -203,6 +203,40 @@ class TestWorkflowVerifiesLockfile:
         assert _workflow_verifies_lockfile(doc) is True
         assert _workflow_verified_lockfile_managers(doc) == {"npm"}
 
+    @pytest.mark.xfail(
+        reason=(
+            "Documented residual limitation, symmetric to the disclosed "
+            "bash -c \"npm ci\" false negative: making quoted-string "
+            "matching single-line-only (to stop an unbalanced apostrophe "
+            "from swallowing a real npm ci step, see "
+            "test_unbalanced_apostrophe_in_echo_does_not_swallow_a_real_"
+            "npm_ci_step above) means a GENUINE multi-line quoted string "
+            "is no longer recognized as one span -- each line is checked "
+            "independently, so a line inside a real multi-line echo that "
+            "happens to contain command-shaped text ('npm ci') is wrongly "
+            "counted as a real invocation, even though the only actual "
+            "invocation in this workflow is 'npm install'. Distinguishing "
+            "a genuine multi-line quoted string from an unbalanced quote "
+            "coincidentally followed by an unrelated later quote needs "
+            "real shell-token-aware parsing, not another regex patch -- "
+            "out of scope per this repo's own 3-strikes precedent (see "
+            "docs/HANDOFF.md's spdx_match.py history and the module-level "
+            "comment above _QUOTED_STRING_RE in ci_gates.py). Not hidden: "
+            "see ci_gates.py's module docstring and docs/METHODOLOGY.md."
+        ),
+        strict=True,
+    )
+    def test_multiline_quoted_string_containing_npm_ci_text_is_wrongly_counted(self) -> None:
+        doc = {"jobs": {"build": {"steps": [
+            {"run": (
+                'echo "release notes:\n'
+                'npm ci\n'
+                'was considered but not used"\n'
+            )},
+            {"run": "npm install"},
+        ]}}}
+        assert _workflow_verifies_lockfile(doc) is False
+
     def test_quoted_cli_argument_in_a_real_invocation_still_verifies(self) -> None:
         # A real invocation can itself contain a quoted argument (e.g. a
         # path with a space) -- that quoted span must still be stripped

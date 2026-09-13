@@ -32,7 +32,15 @@ their own external-tool-per-dimension module, see AGENTS.md §4):
   already-shipped CSV column -- additive-only changes here, see AGENTS.md
   §8/§10) as a derived "was *any* manager verified" aggregate boolean, not
   a replacement for the per-manager breakdown: don't read a repo-wide
-  `True` there as "every manager is compliant."
+  `True` there as "every manager is compliant." Verification matching
+  strips comments and quoted strings from `run:` text first so an echoed
+  mention of a command isn't mistaken for invoking it, at the cost of two
+  disclosed, symmetric limitations from that same single-line design
+  choice: a real invocation wrapped in its own quotes (`bash -c "npm ci"`)
+  is missed (false negative), and a line inside a genuine multi-line quoted
+  string that happens to contain command-shaped text is wrongly counted
+  (false positive) -- see the comment above `_QUOTED_STRING_RE` and
+  docs/METHODOLOGY.md for the full rationale.
 """
 from __future__ import annotations
 
@@ -148,10 +156,33 @@ LOCKFILE_VERIFY_RE = re.compile(
 # logical string) must not be allowed to greedily span past its own line
 # looking for the next matching quote anywhere later in the script --
 # doing so would swallow real, unrelated commands (like a genuine `npm ci`
-# step) sitting between the contraction and the next quoted string. A
-# quoted string is a single-line construct in every shell dialect this
-# module cares about, so refusing to match across a newline is correct, not
-# a narrowing of the original fix.
+# step) sitting between the contraction and the next quoted string.
+#
+# A quoted string is NOT actually a single-line construct in every shell
+# dialect this module cares about -- real bash happily has quoted strings
+# span several physical lines (`echo "line one\nline two\nline three"`), and
+# an earlier version of this comment claimed otherwise. That claim was
+# wrong, and refusing to match across a newline is a real, disclosed
+# narrowing of the original fix, not a free correctness improvement: it
+# trades one false-negative-shaped bug (the unbalanced-apostrophe
+# regression above) for a symmetric false-positive-shaped one -- a genuine
+# multi-line quoted string is no longer recognized as one span, so if a
+# line *inside* that real quoted string happens to contain command-shaped
+# text (e.g. the literal words "npm ci" inside a real, multi-line `echo`
+# message), that line is checked on its own and the text is wrongly
+# counted as a real invocation (see docs/METHODOLOGY.md and
+# test_multiline_quoted_string_containing_npm_ci_text_is_wrongly_counted in
+# tests/collectors/test_ci_gates.py). Both directions are disclosed, known
+# limitations of the same single-line design choice, not silently wrong:
+# the single-line behavior stays as-is because reverting it reopens the
+# worse, silent false-negative regression it was written to fix, and
+# genuinely telling "one real multi-line quoted string" apart from "an
+# unbalanced quote coincidentally followed by an unrelated later quote"
+# needs real shell-token-aware parsing, not another regex tweak -- this
+# regex/heuristic approach family already has three fix rounds behind it
+# (see docs/HANDOFF.md's `spdx_match.py` precedent: after three patch
+# attempts on the same approach family, the repo's rule is to document the
+# residual limitation rather than attempt a fourth).
 _COMMENT_LINE_RE = re.compile(r"^\s*#")
 _QUOTED_STRING_RE = re.compile(r'"(?:[^"\\\n]|\\.)*"|\'(?:[^\'\\\n]|\\.)*\'')
 
