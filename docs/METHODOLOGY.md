@@ -337,8 +337,20 @@ can track (a rename `git` can't associate with its prior path breaks the
 commit-ordering walk silently into "unknown", not a crash); distinguishing
 a real, deliberate status reversal from an incidental edit within the
 post-acceptance-modification signal (stated above, repeated here because
-it's the single most likely finding to be over-read); and any nested ADR
-directory structure beyond one flat directory per candidate path.
+it's the single most likely finding to be over-read); any nested ADR
+directory structure beyond one flat directory per candidate path; C4/
+Structurizr/PlantUML diagram detection (no code anywhere in this
+collector looks for these -- confirmed by independent re-verification
+2026-09-14; do not read README's module-table row as claiming this); a
+monorepo with real design docs living under a subpackage directory (e.g.
+`packages/service-a/docs/adr/`) rather than the analyzed path's own root
+-- every HLD/ADR/runbook candidate check is root-scoped only, so
+subpackage-local docs are silently invisible to this collector, not
+flagged as a false "absent" vs. a true one; and ADR-count-driven runtime
+-- `tally_adrs` runs one `git log --follow` subprocess per *accepted*
+ADR with no batching, confirmed ~75s for a single repo with 3000 accepted
+ADRs (independent re-verification 2026-09-14) -- fine at normal scale,
+a real cost at that end of the distribution.
 ### `monorepo_tooling/` — build/task orchestrator detection
 Answers part of `docs/checklist-by-repo-type/monorepo.md`'s "Build System
 Health" section via five independent, static config-presence-and-shape

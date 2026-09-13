@@ -58,7 +58,7 @@ non-goals.
 | `mutation` | Are the tests behaviorally meaningful, not just passing | [Stryker](https://stryker-mutator.io/) (JS/TS), [mutmut](https://mutmut.readthedocs.io/) (Python) |
 | `performance` | Does a latency/perf budget exist, and is it wired into CI (detection only — no benchmark execution yet, see [`docs/ROADMAP.md`](docs/ROADMAP.md)) | Lighthouse CI / bundlesize / size-limit / artillery config + CI-wiring detection |
 | `api_contract` | OpenAPI / GraphQL / Protobuf schema presence + whether a breaking-change gate is wired into CI | static filesystem + CI YAML grep |
-| `design_docs` | Architecture and design documentation presence — ADRs, HLD/LLD docs, C4 diagrams, architecture decision records | static filesystem + git-log rename tracking |
+| `design_docs` | Architecture and design documentation presence — top-level HLD/LLD docs, an ADR directory with acceptance/reversibility signals, runbook/operational-doc presence | static filesystem + git-log rename tracking |
 | `doc_quality` | Doc-comment coverage (Python via `interrogate`; JS/TS via `eslint-plugin-jsdoc` config presence) + changelog discipline (`CHANGELOG.md` staleness vs. latest git tag) | `interrogate` (Python), config presence (JS/TS) |
 | `migration_hygiene` | DB migration hygiene — forward/backward safety signals, squash debt, multi-app duplicate-migration detection | static filesystem + framework-specific parsing (Django, Alembic, Flyway, …) |
 | `monorepo_tooling` | Build/task orchestrator detection (Nx, Turborepo, Bazel, Pants, Rush, …) + remote-cache config + CI-affected-project wiring | static filesystem + CI YAML |
