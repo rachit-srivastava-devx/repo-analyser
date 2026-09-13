@@ -55,3 +55,46 @@ def commit_all_at(repo: Path, message: str, iso_date: str) -> None:
     env = dict(_ENV, GIT_AUTHOR_DATE=iso_date, GIT_COMMITTER_DATE=iso_date)
     git(repo, "add", "-A")
     git(repo, "commit", "-q", "-m", message, env=env)
+
+
+def commit_all_with_invalid_utf8_author(repo: Path, message: str) -> str:
+    """Stages everything, then constructs the commit object *manually*
+    (`git write-tree` + `git hash-object -w -t commit --stdin` +
+    `git update-ref`) with an author name containing a raw invalid-UTF-8
+    byte (0xFF) -- git itself never validates commit metadata encoding, so
+    a real-world repo can end up with this. Bypasses git's own commit
+    plumbing (which would refuse/mangle a bad env var) by writing the
+    commit object's bytes directly, replicating the technique an
+    independent verifier used to reproduce a real `UnicodeDecodeError`
+    crash in this collector's `git blame` parsing. Returns the new commit
+    sha; updates the current branch to point at it."""
+    git(repo, "add", "-A")
+    tree_sha = git(repo, "write-tree").stdout.strip()
+
+    parent = subprocess.run(["git", "rev-parse", "--verify", "-q", "HEAD"],
+                             cwd=repo, capture_output=True, text=True, env=_ENV)
+    parent_line = f"parent {parent.stdout.strip()}\n" if parent.returncode == 0 else ""
+
+    # \xff round-trips to the single raw byte 0xFF via latin-1 -- a byte
+    # sequence that is not valid UTF-8 on its own.
+    commit_text = (
+        f"tree {tree_sha}\n"
+        f"{parent_line}"
+        f"author Test \xff Bytes <test@example.com> 1700000000 +0000\n"
+        f"committer Test Bytes <test@example.com> 1700000000 +0000\n"
+        f"\n{message}\n"
+    )
+    commit_bytes = commit_text.encode("latin-1")
+
+    hash_result = subprocess.run(
+        ["git", "hash-object", "-w", "-t", "commit", "--stdin"],
+        cwd=repo, input=commit_bytes, capture_output=True, env=_ENV,
+    )
+    hash_result.check_returncode()
+    commit_sha = hash_result.stdout.decode("ascii").strip()
+
+    branch = subprocess.run(["git", "symbolic-ref", "--short", "HEAD"], cwd=repo,
+                             capture_output=True, text=True, env=_ENV, check=True).stdout.strip()
+    subprocess.run(["git", "update-ref", f"refs/heads/{branch}", commit_sha],
+                    cwd=repo, check=True, env=_ENV)
+    return commit_sha

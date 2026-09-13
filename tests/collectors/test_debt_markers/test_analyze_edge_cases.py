@@ -4,7 +4,15 @@ from pathlib import Path
 
 from repo_analyser.collectors.debt_markers.analyze import analyze_repo
 
-from ._debt_markers_helpers import commit_all, commit_all_at, git, init_repo, write, write_bytes
+from ._debt_markers_helpers import (
+    commit_all,
+    commit_all_at,
+    commit_all_with_invalid_utf8_author,
+    git,
+    init_repo,
+    write,
+    write_bytes,
+)
 
 
 def test_nonexistent_path_reports_skip_reason(tmp_path: Path) -> None:
@@ -99,3 +107,55 @@ def test_marker_line_moved_within_a_later_commit_gets_blames_current_history(tmp
 
     assert result.skip_reason == ""
     assert result.total_marker_count == 1
+
+
+def test_marker_shaped_text_inside_a_multiline_python_string_is_not_a_real_marker(
+    tmp_path: Path,
+) -> None:
+    """Regression for the multi-line-string false positive: a comment-
+    shaped line that is really data inside a triple-quoted Python string
+    literal must not be counted as a real TODO/FIXME/... marker."""
+    repo = init_repo(tmp_path / "r")
+    write(
+        repo,
+        "banner.py",
+        'BANNER = """\n'
+        "# TODO: this is literal string DATA, not a real comment\n"
+        "some other line\n"
+        '"""\n',
+    )
+    commit_all(repo, "add banner module")
+
+    result = analyze_repo(repo)
+
+    assert result.skip_reason == ""
+    assert result.total_marker_count == 0
+
+
+def test_repo_with_invalid_utf8_commit_author_does_not_crash_analyze_repo(
+    tmp_path: Path,
+) -> None:
+    """Regression for a real crash: `git blame --line-porcelain` output
+    embeds the introducing commit's author name verbatim, and git does not
+    validate that commit metadata is valid UTF-8. A commit whose author
+    name contains a raw invalid-UTF-8 byte used to raise UnicodeDecodeError
+    out of core.util.run()'s text-mode subprocess decode, crashing the
+    whole repo's analysis. The fix treats this the same as any other blame
+    failure: this marker's age comes back "unknown" (excluded from the
+    average/oldest), but the marker itself is still counted and the run
+    completes -- not a crash, and not a silent 0."""
+    repo = init_repo(tmp_path / "r")
+    write(repo, "a.py", "# TODO: whose author has bad bytes\n")
+    commit_all_with_invalid_utf8_author(repo, "commit with malformed author encoding")
+
+    result = analyze_repo(repo)
+
+    assert result.skip_reason == ""
+    assert result.total_marker_count == 1
+    assert result.marker_counts_by_type == "TODO:1"
+    # Age came back unknown for the one (and only) marker -- excluded from
+    # both the average and the oldest-age tracking, same contract as any
+    # other blame failure (see test_repo_with_no_commits_but_a_staged_
+    # marker_does_not_crash above).
+    assert result.average_age_days == 0.0
+    assert result.oldest_marker_age_days == 0

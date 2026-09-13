@@ -11,12 +11,18 @@ from .blame_age import line_author_times
 from .discovery import iter_tracked_files, read_text_or_none
 from .markers import find_markers_in_text
 
-# A TODO/FIXME that has survived this long is, empirically, not getting
-# picked up by ordinary sprint/backlog grooming -- roughly double a
+# A backlog debt marker that has survived this long is, empirically, not
+# getting picked up by ordinary sprint/backlog grooming -- roughly double a
 # quarterly planning cycle (~90 days), the same "give it one extra full
 # cycle before calling it stale" reasoning codebase_modularity/
 # module_size.py's thresholds use, just for time-since-introduced rather
 # than LOC/file-count. A named, documented default, not tuned per repo.
+#
+# (Deliberately not spelled with the literal marker tokens this module
+# itself hunts for -- see markers.py's MARKER_TYPES -- so that running this
+# collector against this repo's own tree doesn't self-report a false
+# "finding" out of a comment that is discussing the concept, not flagging a
+# real backlog item.)
 STALE_MARKER_AGE_DAYS = 180
 
 
@@ -38,7 +44,7 @@ def collect(repo: Path, now_epoch: int) -> MarkerAggregate:
         text = read_text_or_none(path)
         if text is None:
             continue
-        found = find_markers_in_text(text)
+        found = find_markers_in_text(text, filename=str(path))
         if not found:
             continue
         rel_path = str(path.relative_to(repo))
