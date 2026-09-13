@@ -56,7 +56,7 @@ Contract Stability" row via four independent, static signals — same
    only exclusion rule.
 2. **CI breaking-change gating** (`has_breaking_change_check`/
    `breaking_change_tools`): parses `.github/workflows/*.yml` and matches a
-   `run:`/`uses:` step's text against six known tools' real command shape
+   `run:`/`uses:` step's text against five known tools' real command shape
    (`oasdiff breaking`, `buf breaking`, `graphql-inspector`, etc.), after
    stripping bash comment lines — narrows, does not eliminate, the false
    positive of an `echo`/string step that merely *mentions* a tool by name.

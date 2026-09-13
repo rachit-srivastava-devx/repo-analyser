@@ -8,8 +8,8 @@ consulting .gitignore, and this module follows the same convention rather
 than inventing a second policy.
 
 Precedence on simultaneous matches (openapi > graphql > protobuf, the
-schema_kind enum's own listed order) is applied by analyze.py, not here --
-this module reports everything found, unfiltered.
+fixed append order below) is applied by analyze.py, not here -- this
+module reports everything found, unfiltered.
 """
 from __future__ import annotations
 
