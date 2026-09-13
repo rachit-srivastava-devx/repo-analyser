@@ -109,7 +109,8 @@ agents colliding on the same shared files)
   replacement for that), and a crude re-executability proxy (non-monotonic `execution_count`
   sequence across cells suggests cells were run out of order, not top-to-bottom before commit).
   Columns: `repo, notebooks_total, notebooks_with_uncleared_outputs,
-  notebooks_with_suspected_secrets, notebooks_nonlinear_execution, skip_reason`.
+  notebooks_with_suspected_secrets, notebooks_nonlinear_execution, notebooks_unparseable,
+  skip_reason`.
 
 - **`tooling_drift.py`** — monorepo-scoped (most meaningful once `repo_type.py` flags
   `primary_type=monorepo`, but doesn't have to gate on it). Walks a repo tree for MULTIPLE
