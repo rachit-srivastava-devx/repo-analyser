@@ -140,8 +140,20 @@ LOCKFILE_VERIFY_RE = re.compile(
 # shell parser: a real invocation deliberately wrapped in its own quotes
 # (e.g. `bash -c "npm ci"`) is not detected by this fix -- a known,
 # disclosed limitation (see docs/METHODOLOGY.md), not a silent one.
+#
+# The negated character classes below deliberately exclude "\n" as well as
+# the quote char and backslash: `run:` is a multi-line block-scalar script,
+# and an *unbalanced* quote (a plain English contraction like "Don't" or
+# "it's" inside an echoed message, with no closing quote on the same
+# logical string) must not be allowed to greedily span past its own line
+# looking for the next matching quote anywhere later in the script --
+# doing so would swallow real, unrelated commands (like a genuine `npm ci`
+# step) sitting between the contraction and the next quoted string. A
+# quoted string is a single-line construct in every shell dialect this
+# module cares about, so refusing to match across a newline is correct, not
+# a narrowing of the original fix.
 _COMMENT_LINE_RE = re.compile(r"^\s*#")
-_QUOTED_STRING_RE = re.compile(r'"(?:[^"\\]|\\.)*"|\'(?:[^\'\\]|\\.)*\'')
+_QUOTED_STRING_RE = re.compile(r'"(?:[^"\\\n]|\\.)*"|\'(?:[^\'\\\n]|\\.)*\'')
 
 
 def _strip_comment_lines(text: str) -> str:

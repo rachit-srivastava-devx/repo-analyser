@@ -184,6 +184,34 @@ class TestWorkflowVerifiesLockfile:
         ]}}}
         assert _workflow_verifies_lockfile(doc) is True
 
+    def test_unbalanced_apostrophe_in_echo_does_not_swallow_a_real_npm_ci_step(self) -> None:
+        # Regression: _QUOTED_STRING_RE's negated character classes used to
+        # match newlines, so an *unbalanced* single quote from a plain
+        # English contraction ("Don't") in one echo step would greedily
+        # span forward -- across step boundaries and any real, unrelated
+        # command sitting in between -- looking for the next single-quoted
+        # string anywhere later in the same run block. That silently ate a
+        # genuine `npm ci` invocation sitting between the contraction and
+        # the next quoted string, misreporting a genuinely-enforced
+        # lockfile as unverified. The fix excludes "\n" from those classes
+        # so a quote can never span past its own line.
+        doc = {"jobs": {"build": {"steps": [{"run": (
+            "echo Don't worry about it\n"
+            "npm ci\n"
+            "echo 'this is a real quoted string'\n"
+        )}]}}}
+        assert _workflow_verifies_lockfile(doc) is True
+        assert _workflow_verified_lockfile_managers(doc) == {"npm"}
+
+    def test_quoted_cli_argument_in_a_real_invocation_still_verifies(self) -> None:
+        # A real invocation can itself contain a quoted argument (e.g. a
+        # path with a space) -- that quoted span must still be stripped
+        # correctly (single-line, non-greedy across the whole string) and
+        # must not prevent the invocation itself from being recognized.
+        doc = {"jobs": {"build": {"steps": [{"run": 'npm ci --prefix "my dir"'}]}}}
+        assert _workflow_verifies_lockfile(doc) is True
+        assert _workflow_verified_lockfile_managers(doc) == {"npm"}
+
 
 class TestWorkflowVerifiedLockfileManagers:
     def test_npm_ci_attributes_to_npm_only(self) -> None:
