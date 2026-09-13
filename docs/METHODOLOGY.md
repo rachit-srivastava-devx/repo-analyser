@@ -47,8 +47,9 @@ Two more gates, same "go look, don't infer" spirit:
   only the embedded `package.json` key.
 - **Lockfile discipline, attributed per package manager**
   (`lockfile_present`/`lockfiles_found`, then `lockfile_managers_found`/
-  `lockfile_managers_verified_in_ci`): whether a lockfile is committed
-  (walked repo-wide, so a monorepo's per-package lockfiles all count), and
+  `lockfile_managers_verified_in_ci`, plus the derived aggregate
+  `lockfile_verified_in_ci`): whether a lockfile is committed (walked
+  repo-wide, so a monorepo's per-package lockfiles all count), and
   separately, per manager, whether some CI step actually *enforces* it
   (`npm ci`, `poetry check`, `cargo build|test --locked`, `go mod verify` —
   `npm install` is deliberately excluded, since it silently rewrites the
@@ -61,6 +62,19 @@ Two more gates, same "go look, don't infer" spirit:
   `npm` lockfile next to an unenforced `poetry` one reports both,
   distinguishably, rather than one enforced command anywhere making the
   whole repo look compliant.
+  - `lockfile_verified_in_ci` is a plain boolean kept alongside the
+    per-manager columns (it is an already-shipped column; additive-only
+    changes per AGENTS.md §8/§10, not a replacement): `True` iff
+    `lockfile_managers_verified_in_ci` is non-empty, i.e. at least one
+    manager was verified, computed from that exact same verified-managers
+    set. It is a coarser, repo-wide "was *anything* enforced" bit — the
+    same monorepo above (npm enforced, poetry not) reports
+    `lockfile_verified_in_ci=True` *and*
+    `lockfile_managers_verified_in_ci=npm` (not `npm;poetry`)
+    simultaneously. Treat `lockfile_managers_verified_in_ci` as the
+    authoritative per-manager breakdown; reading a repo-wide `True` here as
+    "every manager is compliant" is exactly the conflation bug this
+    module's fix exists to prevent.
   - Matching is done against `run:` text with whole-line bash comments and
     quoted-string spans stripped first, so a step that only *mentions* a
     command — in a comment, or inside an `echo "..."` string — is not

@@ -457,6 +457,7 @@ jobs:
         assert result.lockfiles_found == "package-lock.json"
         assert result.lockfile_managers_found == "npm"
         assert result.lockfile_managers_verified_in_ci == ""
+        assert result.lockfile_verified_in_ci is False
 
     def test_lockfile_present_and_ci_runs_npm_ci(self, tmp_path: Path) -> None:
         repo = tmp_path / "repo"
@@ -468,6 +469,7 @@ jobs:
         result = analyze_repo(repo)
         assert result.lockfile_present is True
         assert result.lockfile_managers_verified_in_ci == "npm"
+        assert result.lockfile_verified_in_ci is True
 
     def test_lockfile_mentioned_only_in_echo_is_not_verified(self, tmp_path: Path) -> None:
         # End-to-end regression for defect 1 through analyze_repo: the only
@@ -483,6 +485,7 @@ jobs:
         result = analyze_repo(repo)
         assert result.lockfile_managers_found == "npm"
         assert result.lockfile_managers_verified_in_ci == ""
+        assert result.lockfile_verified_in_ci is False
 
     def test_precommit_and_lockfile_computed_even_with_no_workflows_dir(self, tmp_path: Path) -> None:
         # Regression guard: precommit/lockfile signals must not depend on
@@ -505,6 +508,7 @@ jobs:
         # honest result, not a guess.
         assert result.lockfile_managers_found == "yarn"
         assert result.lockfile_managers_verified_in_ci == ""
+        assert result.lockfile_verified_in_ci is False
 
     def test_monorepo_mixed_compliance_attributed_per_manager(self, tmp_path: Path) -> None:
         # Defect 2's exact regression fixture: a monorepo with
@@ -537,6 +541,41 @@ jobs:
         verified = set(result.lockfile_managers_verified_in_ci.split(";"))
         assert "npm" in verified
         assert "poetry" not in verified
+        assert result.lockfile_managers_verified_in_ci == "npm"
+
+    def test_monorepo_mixed_compliance_aggregate_and_breakdown_coexist(self, tmp_path: Path) -> None:
+        # Same monorepo fixture as
+        # test_monorepo_mixed_compliance_attributed_per_manager (npm side
+        # enforced via `npm ci`, poetry side only `poetry install`, never
+        # `poetry check`) -- this test's job is specifically to prove the
+        # restored derived aggregate (lockfile_verified_in_ci) and the
+        # authoritative per-manager breakdown
+        # (lockfile_managers_verified_in_ci) tell two different, both-true
+        # parts of the story without contradicting each other: the
+        # repo-wide aggregate is True (at least one manager -- npm -- is
+        # verified), while the breakdown correctly still shows only "npm",
+        # not "npm;poetry". Reading the aggregate alone as "every manager is
+        # compliant" would be exactly the conflation bug this module's fix
+        # exists to prevent.
+        repo = tmp_path / "repo"
+        (repo / "services" / "api").mkdir(parents=True)
+        (repo / "services" / "web").mkdir(parents=True)
+        (repo / "services" / "api" / "poetry.lock").write_text("")
+        (repo / "services" / "web" / "package-lock.json").write_text("{}")
+        _write_workflow(repo, "ci.yml", """
+on: push
+jobs:
+  api:
+    steps:
+      - run: cd services/api && poetry install
+      - run: pytest
+  web:
+    steps:
+      - run: cd services/web && npm ci
+      - run: npm test
+""")
+        result = analyze_repo(repo)
+        assert result.lockfile_verified_in_ci is True
         assert result.lockfile_managers_verified_in_ci == "npm"
 
     def test_multiple_lockfiles_via_analyze_repo(self, tmp_path: Path) -> None:

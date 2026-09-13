@@ -28,7 +28,11 @@ their own external-tool-per-dimension module, see AGENTS.md §4):
   repo-wide boolean, so a monorepo with an enforced `package-lock.json`
   next to an unenforced `poetry.lock` reports both, distinguishably,
   instead of one enforced command anywhere making the whole repo look
-  compliant.
+  compliant. `lockfile_verified_in_ci` is kept alongside these (an
+  already-shipped CSV column -- additive-only changes here, see AGENTS.md
+  §8/§10) as a derived "was *any* manager verified" aggregate boolean, not
+  a replacement for the per-manager breakdown: don't read a repo-wide
+  `True` there as "every manager is compliant."
 """
 from __future__ import annotations
 
@@ -185,6 +189,17 @@ class CIGateResult:
     lockfiles_found: str
     lockfile_managers_found: str
     lockfile_managers_verified_in_ci: str
+    # Derived "any manager verified" aggregate -- True iff
+    # lockfile_managers_verified_in_ci is non-empty (at least one manager
+    # verified), computed from that exact same verified_managers set, not a
+    # separate re-implementation. This is repo-wide and coarser than the
+    # per-manager breakdown above: a monorepo can have this True while only
+    # one of several lockfile managers is actually enforced, so treat
+    # `lockfile_managers_verified_in_ci` as the authoritative per-manager
+    # answer and this field only as a quick "was anything at all enforced"
+    # bit -- reading a repo-wide True here as "every manager is compliant"
+    # is exactly the conflation bug this module's fix exists to prevent.
+    lockfile_verified_in_ci: bool
 
 
 def _workflow_runs_tests(doc: dict) -> bool:
@@ -316,6 +331,7 @@ def analyze_repo(repo: Path) -> CIGateResult:
             # same as any_workflow_runs_tests=False on this same early-return
             # path.
             lockfile_managers_verified_in_ci="",
+            lockfile_verified_in_ci=False,
         )
 
     files = sorted([p for p in wf_dir.iterdir() if p.suffix in (".yml", ".yaml")])
@@ -360,6 +376,7 @@ def analyze_repo(repo: Path) -> CIGateResult:
         lockfiles_found=";".join(lockfiles_found),
         lockfile_managers_found=";".join(lockfile_managers_found),
         lockfile_managers_verified_in_ci=";".join(sorted(verified_managers)),
+        lockfile_verified_in_ci=bool(verified_managers),
     )
 
 
