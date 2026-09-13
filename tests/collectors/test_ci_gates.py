@@ -5,11 +5,13 @@ from pathlib import Path
 import pytest
 
 from repo_analyser.collectors.ci_gates import (
+    _lockfile_managers_found,
     _lockfiles_found,
     _package_json_precommit_signal,
     _precommit_signals,
     _workflow_is_deploy_only,
     _workflow_runs_tests,
+    _workflow_verified_lockfile_managers,
     _workflow_verifies_lockfile,
     analyze_repo,
     run_ci_gates,
@@ -146,6 +148,154 @@ class TestWorkflowVerifiesLockfile:
             "npm ci\n"
         )}]}}}
         assert _workflow_verifies_lockfile(doc) is True
+
+    def test_npm_ci_mentioned_only_inside_an_echoed_string_is_not_verification(self) -> None:
+        # Defect: a bare substring search matches "npm ci" inside an
+        # `echo "..."` string just as readily as a real invocation. The only
+        # REAL install step here is the loose, unenforced `npm install` --
+        # this must report False, not True.
+        doc = {"jobs": {"build": {"steps": [
+            {"run": 'echo "we should switch to npm ci"'},
+            {"run": "npm install"},
+        ]}}}
+        assert _workflow_verifies_lockfile(doc) is False
+
+    def test_npm_ci_mentioned_only_inside_an_echoed_string_with_no_install_step_at_all(self) -> None:
+        # Same false-positive shape, but with no install step of any kind
+        # anywhere in the workflow -- nothing was invoked at all.
+        doc = {"jobs": {"build": {"steps": [
+            {"run": 'echo "we should switch to npm ci one day"'},
+        ]}}}
+        assert _workflow_verifies_lockfile(doc) is False
+
+    def test_npm_ci_in_single_quoted_echo_string_is_also_not_verification(self) -> None:
+        doc = {"jobs": {"build": {"steps": [
+            {"run": "echo 'reminder: prod uses npm ci'"},
+            {"run": "npm install"},
+        ]}}}
+        assert _workflow_verifies_lockfile(doc) is False
+
+    def test_real_npm_ci_step_alongside_an_unrelated_echo_string_still_verifies(self) -> None:
+        # An echoed string elsewhere in the same script must not suppress a
+        # genuine invocation later in the same run block.
+        doc = {"jobs": {"build": {"steps": [
+            {"run": 'echo "installing dependencies now"'},
+            {"run": "npm ci"},
+        ]}}}
+        assert _workflow_verifies_lockfile(doc) is True
+
+    def test_unbalanced_apostrophe_in_echo_does_not_swallow_a_real_npm_ci_step(self) -> None:
+        # Regression: _QUOTED_STRING_RE's negated character classes used to
+        # match newlines, so an *unbalanced* single quote from a plain
+        # English contraction ("Don't") in one echo step would greedily
+        # span forward -- across step boundaries and any real, unrelated
+        # command sitting in between -- looking for the next single-quoted
+        # string anywhere later in the same run block. That silently ate a
+        # genuine `npm ci` invocation sitting between the contraction and
+        # the next quoted string, misreporting a genuinely-enforced
+        # lockfile as unverified. The fix excludes "\n" from those classes
+        # so a quote can never span past its own line.
+        doc = {"jobs": {"build": {"steps": [{"run": (
+            "echo Don't worry about it\n"
+            "npm ci\n"
+            "echo 'this is a real quoted string'\n"
+        )}]}}}
+        assert _workflow_verifies_lockfile(doc) is True
+        assert _workflow_verified_lockfile_managers(doc) == {"npm"}
+
+    @pytest.mark.xfail(
+        reason=(
+            "Documented residual limitation, symmetric to the disclosed "
+            "bash -c \"npm ci\" false negative: making quoted-string "
+            "matching single-line-only (to stop an unbalanced apostrophe "
+            "from swallowing a real npm ci step, see "
+            "test_unbalanced_apostrophe_in_echo_does_not_swallow_a_real_"
+            "npm_ci_step above) means a GENUINE multi-line quoted string "
+            "is no longer recognized as one span -- each line is checked "
+            "independently, so a line inside a real multi-line echo that "
+            "happens to contain command-shaped text ('npm ci') is wrongly "
+            "counted as a real invocation, even though the only actual "
+            "invocation in this workflow is 'npm install'. Distinguishing "
+            "a genuine multi-line quoted string from an unbalanced quote "
+            "coincidentally followed by an unrelated later quote needs "
+            "real shell-token-aware parsing, not another regex patch -- "
+            "out of scope per this repo's own 3-strikes precedent (see "
+            "docs/HANDOFF.md's spdx_match.py history and the module-level "
+            "comment above _QUOTED_STRING_RE in ci_gates.py). Not hidden: "
+            "see ci_gates.py's module docstring and docs/METHODOLOGY.md."
+        ),
+        strict=True,
+    )
+    def test_multiline_quoted_string_containing_npm_ci_text_is_wrongly_counted(self) -> None:
+        doc = {"jobs": {"build": {"steps": [
+            {"run": (
+                'echo "release notes:\n'
+                'npm ci\n'
+                'was considered but not used"\n'
+            )},
+            {"run": "npm install"},
+        ]}}}
+        assert _workflow_verifies_lockfile(doc) is False
+
+    def test_quoted_cli_argument_in_a_real_invocation_still_verifies(self) -> None:
+        # A real invocation can itself contain a quoted argument (e.g. a
+        # path with a space) -- that quoted span must still be stripped
+        # correctly (single-line, non-greedy across the whole string) and
+        # must not prevent the invocation itself from being recognized.
+        doc = {"jobs": {"build": {"steps": [{"run": 'npm ci --prefix "my dir"'}]}}}
+        assert _workflow_verifies_lockfile(doc) is True
+        assert _workflow_verified_lockfile_managers(doc) == {"npm"}
+
+
+class TestWorkflowVerifiedLockfileManagers:
+    def test_npm_ci_attributes_to_npm_only(self) -> None:
+        doc = {"jobs": {"build": {"steps": [{"run": "npm ci"}]}}}
+        assert _workflow_verified_lockfile_managers(doc) == {"npm"}
+
+    def test_poetry_check_attributes_to_poetry_only(self) -> None:
+        doc = {"jobs": {"build": {"steps": [{"run": "poetry check"}]}}}
+        assert _workflow_verified_lockfile_managers(doc) == {"poetry"}
+
+    def test_no_verification_signal_is_empty_set(self) -> None:
+        doc = {"jobs": {"build": {"steps": [{"run": "npm install"}]}}}
+        assert _workflow_verified_lockfile_managers(doc) == set()
+
+    def test_echoed_npm_ci_string_does_not_attribute_to_npm(self) -> None:
+        # Same defect-1 false-positive shape, checked at the per-manager
+        # attribution function used for defect 2's fix.
+        doc = {"jobs": {"build": {"steps": [
+            {"run": 'echo "we should switch to npm ci"'},
+            {"run": "npm install"},
+        ]}}}
+        assert _workflow_verified_lockfile_managers(doc) == set()
+
+    def test_multiple_managers_verified_in_one_workflow(self) -> None:
+        doc = {"jobs": {
+            "node": {"steps": [{"run": "npm ci"}]},
+            "python": {"steps": [{"run": "poetry check"}]},
+        }}
+        assert _workflow_verified_lockfile_managers(doc) == {"npm", "poetry"}
+
+
+class TestLockfileManagersFound:
+    def test_npm_lockfile_maps_to_npm(self) -> None:
+        assert _lockfile_managers_found(["package-lock.json"]) == ["npm"]
+
+    def test_poetry_lockfile_maps_to_poetry(self) -> None:
+        assert _lockfile_managers_found(["poetry.lock"]) == ["poetry"]
+
+    def test_no_lockfiles_is_empty(self) -> None:
+        assert _lockfile_managers_found([]) == []
+
+    def test_monorepo_subdirectory_paths_map_correctly(self) -> None:
+        assert _lockfile_managers_found(
+            ["services/api/poetry.lock", "services/web/package-lock.json"],
+        ) == ["npm", "poetry"]
+
+    def test_duplicate_manager_from_two_files_deduplicated(self) -> None:
+        assert _lockfile_managers_found(
+            ["packages/a/package-lock.json", "packages/b/package-lock.json"],
+        ) == ["npm"]
 
 
 class TestPrecommitSignals:
@@ -367,6 +517,8 @@ jobs:
         result = analyze_repo(repo)
         assert result.lockfile_present is True
         assert result.lockfiles_found == "package-lock.json"
+        assert result.lockfile_managers_found == "npm"
+        assert result.lockfile_managers_verified_in_ci == ""
         assert result.lockfile_verified_in_ci is False
 
     def test_lockfile_present_and_ci_runs_npm_ci(self, tmp_path: Path) -> None:
@@ -378,7 +530,24 @@ jobs:
                          "      - run: npm ci\n      - run: npm test\n")
         result = analyze_repo(repo)
         assert result.lockfile_present is True
+        assert result.lockfile_managers_verified_in_ci == "npm"
         assert result.lockfile_verified_in_ci is True
+
+    def test_lockfile_mentioned_only_in_echo_is_not_verified(self, tmp_path: Path) -> None:
+        # End-to-end regression for defect 1 through analyze_repo: the only
+        # real install step is the loose `npm install`, so this repo's npm
+        # lockfile must be reported present-but-not-verified.
+        repo = tmp_path / "repo"
+        repo.mkdir()
+        (repo / "package-lock.json").write_text("{}")
+        _write_workflow(repo, "ci.yml",
+                         "on: push\njobs:\n  build:\n    steps:\n"
+                         "      - run: echo \"we should switch to npm ci\"\n"
+                         "      - run: npm install\n")
+        result = analyze_repo(repo)
+        assert result.lockfile_managers_found == "npm"
+        assert result.lockfile_managers_verified_in_ci == ""
+        assert result.lockfile_verified_in_ci is False
 
     def test_precommit_and_lockfile_computed_even_with_no_workflows_dir(self, tmp_path: Path) -> None:
         # Regression guard: precommit/lockfile signals must not depend on
@@ -396,7 +565,80 @@ jobs:
         assert result.precommit_signals == ".husky"
         assert result.lockfile_present is True
         assert result.lockfiles_found == "yarn.lock"
+        # yarn has no wired-up enforcement pattern (disclosed gap, see the
+        # module docstring) -- "found" but never "verified" is the correct,
+        # honest result, not a guess.
+        assert result.lockfile_managers_found == "yarn"
+        assert result.lockfile_managers_verified_in_ci == ""
         assert result.lockfile_verified_in_ci is False
+
+    def test_monorepo_mixed_compliance_attributed_per_manager(self, tmp_path: Path) -> None:
+        # Defect 2's exact regression fixture: a monorepo with
+        # services/api/poetry.lock (CI only runs the loose `poetry install`,
+        # never `poetry check`) alongside services/web/package-lock.json (CI
+        # correctly runs `npm ci`). Before the fix this collapsed to one
+        # repo-wide `lockfile_verified_in_ci=True`, hiding that the poetry
+        # side is unenforced. After the fix, npm and poetry must be
+        # distinguishable: npm verified, poetry not.
+        repo = tmp_path / "repo"
+        (repo / "services" / "api").mkdir(parents=True)
+        (repo / "services" / "web").mkdir(parents=True)
+        (repo / "services" / "api" / "poetry.lock").write_text("")
+        (repo / "services" / "web" / "package-lock.json").write_text("{}")
+        _write_workflow(repo, "ci.yml", """
+on: push
+jobs:
+  api:
+    steps:
+      - run: cd services/api && poetry install
+      - run: pytest
+  web:
+    steps:
+      - run: cd services/web && npm ci
+      - run: npm test
+""")
+        result = analyze_repo(repo)
+        assert result.lockfiles_found == "services/api/poetry.lock;services/web/package-lock.json"
+        assert result.lockfile_managers_found == "npm;poetry"
+        verified = set(result.lockfile_managers_verified_in_ci.split(";"))
+        assert "npm" in verified
+        assert "poetry" not in verified
+        assert result.lockfile_managers_verified_in_ci == "npm"
+
+    def test_monorepo_mixed_compliance_aggregate_and_breakdown_coexist(self, tmp_path: Path) -> None:
+        # Same monorepo fixture as
+        # test_monorepo_mixed_compliance_attributed_per_manager (npm side
+        # enforced via `npm ci`, poetry side only `poetry install`, never
+        # `poetry check`) -- this test's job is specifically to prove the
+        # restored derived aggregate (lockfile_verified_in_ci) and the
+        # authoritative per-manager breakdown
+        # (lockfile_managers_verified_in_ci) tell two different, both-true
+        # parts of the story without contradicting each other: the
+        # repo-wide aggregate is True (at least one manager -- npm -- is
+        # verified), while the breakdown correctly still shows only "npm",
+        # not "npm;poetry". Reading the aggregate alone as "every manager is
+        # compliant" would be exactly the conflation bug this module's fix
+        # exists to prevent.
+        repo = tmp_path / "repo"
+        (repo / "services" / "api").mkdir(parents=True)
+        (repo / "services" / "web").mkdir(parents=True)
+        (repo / "services" / "api" / "poetry.lock").write_text("")
+        (repo / "services" / "web" / "package-lock.json").write_text("{}")
+        _write_workflow(repo, "ci.yml", """
+on: push
+jobs:
+  api:
+    steps:
+      - run: cd services/api && poetry install
+      - run: pytest
+  web:
+    steps:
+      - run: cd services/web && npm ci
+      - run: npm test
+""")
+        result = analyze_repo(repo)
+        assert result.lockfile_verified_in_ci is True
+        assert result.lockfile_managers_verified_in_ci == "npm"
 
     def test_multiple_lockfiles_via_analyze_repo(self, tmp_path: Path) -> None:
         repo = tmp_path / "repo"

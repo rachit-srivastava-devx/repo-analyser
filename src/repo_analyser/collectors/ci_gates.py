@@ -18,11 +18,29 @@ their own external-tool-per-dimension module, see AGENTS.md §4):
   Independent of whether `.github/workflows` exists at all -- a repo can gate
   locally via hooks with no CI workflow, or vice versa.
 - **Lockfile discipline**: whether a lockfile is committed, AND (a separate
-  question, kept as a separate column per the same duplication.py/
+  question, kept as separate columns per the same duplication.py/
   exact_duplicates.py principle of not averaging two different measurements
   into one) whether any CI step actually *enforces* it (`npm ci`, not
   `npm install`, which silently rewrites the lockfile instead of failing on
-  drift; `poetry check`; `cargo build|test --locked`; `go mod verify`).
+  drift; `poetry check`; `cargo build|test --locked`; `go mod verify`) --
+  attributed **per package manager** (`lockfile_managers_found` /
+  `lockfile_managers_verified_in_ci`, both semicolon-joined), not one
+  repo-wide boolean, so a monorepo with an enforced `package-lock.json`
+  next to an unenforced `poetry.lock` reports both, distinguishably,
+  instead of one enforced command anywhere making the whole repo look
+  compliant. `lockfile_verified_in_ci` is kept alongside these (an
+  already-shipped CSV column -- additive-only changes here, see AGENTS.md
+  §8/§10) as a derived "was *any* manager verified" aggregate boolean, not
+  a replacement for the per-manager breakdown: don't read a repo-wide
+  `True` there as "every manager is compliant." Verification matching
+  strips comments and quoted strings from `run:` text first so an echoed
+  mention of a command isn't mistaken for invoking it, at the cost of two
+  disclosed, symmetric limitations from that same single-line design
+  choice: a real invocation wrapped in its own quotes (`bash -c "npm ci"`)
+  is missed (false negative), and a line inside a genuine multi-line quoted
+  string that happens to contain command-shaped text is wrongly counted
+  (false positive) -- see the comment above `_QUOTED_STRING_RE` and
+  docs/METHODOLOGY.md for the full rationale.
 """
 from __future__ import annotations
 
@@ -71,10 +89,23 @@ PACKAGE_JSON_PRECOMMIT_KEYS = ("pre-commit", "lint-staged")
 # EXCLUDE_DIR_PARTS so this walk skips node_modules/vendor/etc the same way
 # detect_repo_language already does, rather than inventing a second
 # exclusion list that could quietly drift from it.
-LOCKFILE_NAMES = (
-    "package-lock.json", "pnpm-lock.yaml", "yarn.lock",
-    "poetry.lock", "Pipfile.lock", "Cargo.lock", "go.sum",
-)
+#
+# Each lockfile name also maps to the package manager that owns it -- used
+# to attribute lockfile-verification-in-CI per manager (see
+# LOCKFILE_VERIFY_PATTERNS_BY_MANAGER below) instead of collapsing every
+# manager in a monorepo into one global "verified" bit. LOCKFILE_NAMES is
+# derived from this mapping's keys, not hand-duplicated, so the two can't
+# drift apart.
+LOCKFILE_MANAGER_BY_FILENAME: dict[str, str] = {
+    "package-lock.json": "npm",
+    "pnpm-lock.yaml": "pnpm",
+    "yarn.lock": "yarn",
+    "poetry.lock": "poetry",
+    "Pipfile.lock": "pipenv",
+    "Cargo.lock": "cargo",
+    "go.sum": "go",
+}
+LOCKFILE_NAMES = tuple(LOCKFILE_MANAGER_BY_FILENAME)
 
 # Lockfile discipline, part 2: does any CI step actually *enforce* the
 # lockfile rather than merely having one committed? `npm install` is
@@ -83,27 +114,107 @@ LOCKFILE_NAMES = (
 # touches the same file. Scoped to `run:` text only (unlike TEST_RE, which
 # also checks `uses:`): none of these are ever invoked as a marketplace
 # action, only as a literal shell command.
-LOCKFILE_VERIFY_PATTERNS = [
-    r"\bnpm\s+ci\b",
-    r"\bpoetry\s+check\b",
-    r"\bcargo\s+(?:build|test)\b[^\n]*?--locked\b",
-    r"\bgo\s+mod\s+verify\b",
-]
-LOCKFILE_VERIFY_RE = re.compile("|".join(LOCKFILE_VERIFY_PATTERNS), re.IGNORECASE)
+#
+# Keyed by manager (not a flat list) so a monorepo with, say, an unenforced
+# poetry.lock next to a properly-enforced package-lock.json can be
+# attributed correctly instead of one enforced command anywhere in the repo
+# making the whole repo look compliant (AGENTS.md §4: don't average two
+# different measurements into one number). Only npm/poetry/cargo/go have a
+# known enforcement command wired up here -- pnpm/yarn/pipenv lockfiles are
+# still detected as *present* (LOCKFILE_MANAGER_BY_FILENAME above) but never
+# appear as "verified," a disclosed gap, not a silent one (see
+# docs/METHODOLOGY.md).
+LOCKFILE_VERIFY_PATTERNS_BY_MANAGER: dict[str, re.Pattern[str]] = {
+    "npm": re.compile(r"\bnpm\s+ci\b", re.IGNORECASE),
+    "poetry": re.compile(r"\bpoetry\s+check\b", re.IGNORECASE),
+    "cargo": re.compile(r"\bcargo\s+(?:build|test)\b[^\n]*?--locked\b", re.IGNORECASE),
+    "go": re.compile(r"\bgo\s+mod\s+verify\b", re.IGNORECASE),
+}
+# Combined form, kept for the repo-wide "was anything verified at all"
+# question -- derived from the per-manager patterns above (single source of
+# truth) rather than a hand-duplicated pattern list.
+LOCKFILE_VERIFY_RE = re.compile(
+    "|".join(p.pattern for p in LOCKFILE_VERIFY_PATTERNS_BY_MANAGER.values()), re.IGNORECASE,
+)
 
 # A `run:` block is a literal shell script, and its text can legitimately
 # contain a bash comment line that merely *mentions* a verification command
-# ("# remember: prod uses npm ci") without invoking it -- stripping
-# whole-line comments before matching keeps LOCKFILE_VERIFY_RE from treating
-# that mention as an actual step. Deliberately simple (whole-line only, no
-# quote-aware inline-comment stripping) to match this module's existing
-# "conservative regex over the raw text" approach rather than growing a
-# real shell parser for one edge case.
+# ("# remember: prod uses npm ci") -- or a quoted string doing the same
+# thing in a real, executed command ('echo "we should switch to npm ci"')
+# -- without invoking it either way. A bare substring search against the
+# raw text can't distinguish "npm ci" the invocation from "npm ci" the words
+# inside an echoed message, so both whole-line comments and quoted-string
+# spans are stripped before matching. This is still a regex over text, not a
+# shell parser: a real invocation deliberately wrapped in its own quotes
+# (e.g. `bash -c "npm ci"`) is not detected by this fix -- a known,
+# disclosed limitation (see docs/METHODOLOGY.md), not a silent one.
+#
+# The negated character classes below deliberately exclude "\n" as well as
+# the quote char and backslash: `run:` is a multi-line block-scalar script,
+# and an *unbalanced* quote (a plain English contraction like "Don't" or
+# "it's" inside an echoed message, with no closing quote on the same
+# logical string) must not be allowed to greedily span past its own line
+# looking for the next matching quote anywhere later in the script --
+# doing so would swallow real, unrelated commands (like a genuine `npm ci`
+# step) sitting between the contraction and the next quoted string.
+#
+# A quoted string is NOT actually a single-line construct in every shell
+# dialect this module cares about -- real bash happily has quoted strings
+# span several physical lines (`echo "line one\nline two\nline three"`), and
+# an earlier version of this comment claimed otherwise. That claim was
+# wrong, and refusing to match across a newline is a real, disclosed
+# narrowing of the original fix, not a free correctness improvement: it
+# trades one false-negative-shaped bug (the unbalanced-apostrophe
+# regression above) for a symmetric false-positive-shaped one -- a genuine
+# multi-line quoted string is no longer recognized as one span, so if a
+# line *inside* that real quoted string happens to contain command-shaped
+# text (e.g. the literal words "npm ci" inside a real, multi-line `echo`
+# message), that line is checked on its own and the text is wrongly
+# counted as a real invocation (see docs/METHODOLOGY.md and
+# test_multiline_quoted_string_containing_npm_ci_text_is_wrongly_counted in
+# tests/collectors/test_ci_gates.py). Both directions are disclosed, known
+# limitations of the same single-line design choice, not silently wrong:
+# the single-line behavior stays as-is because reverting it reopens the
+# worse, silent false-negative regression it was written to fix, and
+# genuinely telling "one real multi-line quoted string" apart from "an
+# unbalanced quote coincidentally followed by an unrelated later quote"
+# needs real shell-token-aware parsing, not another regex tweak -- this
+# regex/heuristic approach family already has three fix rounds behind it
+# (see docs/HANDOFF.md's `spdx_match.py` precedent: after three patch
+# attempts on the same approach family, the repo's rule is to document the
+# residual limitation rather than attempt a fourth).
 _COMMENT_LINE_RE = re.compile(r"^\s*#")
+_QUOTED_STRING_RE = re.compile(r'"(?:[^"\\\n]|\\.)*"|\'(?:[^\'\\\n]|\\.)*\'')
 
 
 def _strip_comment_lines(text: str) -> str:
     return "\n".join(line for line in text.splitlines() if not _COMMENT_LINE_RE.match(line))
+
+
+def _strip_quoted_strings(text: str) -> str:
+    return _QUOTED_STRING_RE.sub(" ", text)
+
+
+def _cleaned_run_text(run_text: str) -> str:
+    """Text a lockfile-verification pattern should actually be matched
+    against: whole-line comments and quoted-string spans removed, so neither
+    a comment mentioning a command nor an echoed string containing its words
+    can be mistaken for the command actually running (see module-level note
+    above `_COMMENT_LINE_RE`)."""
+    return _strip_quoted_strings(_strip_comment_lines(run_text))
+
+
+def _iter_run_texts(doc: dict) -> list[str]:
+    jobs = (doc or {}).get("jobs") or {}
+    texts = []
+    for job in jobs.values():
+        if not isinstance(job, dict):
+            continue
+        for step in job.get("steps", []) or []:
+            if not isinstance(step, dict):
+                continue
+            texts.append(step.get("run", "") or "")
+    return texts
 
 
 @dataclass
@@ -119,6 +230,18 @@ class CIGateResult:
     precommit_signals: str
     lockfile_present: bool
     lockfiles_found: str
+    lockfile_managers_found: str
+    lockfile_managers_verified_in_ci: str
+    # Derived "any manager verified" aggregate -- True iff
+    # lockfile_managers_verified_in_ci is non-empty (at least one manager
+    # verified), computed from that exact same verified_managers set, not a
+    # separate re-implementation. This is repo-wide and coarser than the
+    # per-manager breakdown above: a monorepo can have this True while only
+    # one of several lockfile managers is actually enforced, so treat
+    # `lockfile_managers_verified_in_ci` as the authoritative per-manager
+    # answer and this field only as a quick "was anything at all enforced"
+    # bit -- reading a repo-wide True here as "every manager is compliant"
+    # is exactly the conflation bug this module's fix exists to prevent.
     lockfile_verified_in_ci: bool
 
 
@@ -153,17 +276,22 @@ def _workflow_is_deploy_only(doc: dict) -> bool:
 
 
 def _workflow_verifies_lockfile(doc: dict) -> bool:
-    jobs = (doc or {}).get("jobs") or {}
-    for job in jobs.values():
-        if not isinstance(job, dict):
-            continue
-        for step in job.get("steps", []) or []:
-            if not isinstance(step, dict):
-                continue
-            run_text = step.get("run", "") or ""
-            if LOCKFILE_VERIFY_RE.search(_strip_comment_lines(run_text)):
-                return True
-    return False
+    return any(LOCKFILE_VERIFY_RE.search(_cleaned_run_text(t)) for t in _iter_run_texts(doc))
+
+
+def _workflow_verified_lockfile_managers(doc: dict) -> set[str]:
+    """Which package managers (see LOCKFILE_VERIFY_PATTERNS_BY_MANAGER) have
+    a real, invoked enforcement command somewhere in this workflow doc --
+    the per-manager counterpart to _workflow_verifies_lockfile, so a
+    monorepo with several lockfile types can have each attributed
+    correctly instead of collapsed into one repo-wide bit."""
+    managers: set[str] = set()
+    for run_text in _iter_run_texts(doc):
+        cleaned = _cleaned_run_text(run_text)
+        for manager, pattern in LOCKFILE_VERIFY_PATTERNS_BY_MANAGER.items():
+            if pattern.search(cleaned):
+                managers.add(manager)
+    return managers
 
 
 def _package_json_precommit_signal(repo: Path) -> str | None:
@@ -214,6 +342,14 @@ def _lockfiles_found(repo: Path) -> list[str]:
     return sorted(found)
 
 
+def _lockfile_managers_found(lockfiles_found: list[str]) -> list[str]:
+    """Package managers implied by an already-computed _lockfiles_found()
+    list -- e.g. ["packages/api/package-lock.json"] -> ["npm"]. Sorted,
+    deduplicated: a monorepo with two package-lock.json files in different
+    subdirectories is still just one manager ("npm"), not two."""
+    return sorted({LOCKFILE_MANAGER_BY_FILENAME[Path(p).name] for p in lockfiles_found})
+
+
 def analyze_repo(repo: Path) -> CIGateResult:
     # Independent of whether .github/workflows exists at all -- a repo can
     # have local pre-commit hooks and a committed lockfile with zero GitHub
@@ -221,6 +357,7 @@ def analyze_repo(repo: Path) -> CIGateResult:
     # as "no signal" just because the CI-workflow branch below returns early.
     precommit_signals = _precommit_signals(repo)
     lockfiles_found = _lockfiles_found(repo)
+    lockfile_managers_found = _lockfile_managers_found(lockfiles_found)
 
     wf_dir = repo / ".github" / "workflows"
     if not wf_dir.is_dir():
@@ -231,16 +368,19 @@ def analyze_repo(repo: Path) -> CIGateResult:
             precommit_signals=";".join(precommit_signals),
             lockfile_present=bool(lockfiles_found),
             lockfiles_found=";".join(lockfiles_found),
+            lockfile_managers_found=";".join(lockfile_managers_found),
             # No workflows exist, so no CI step could possibly have verified
-            # the lockfile -- this is a known fact, not a guess, same as
-            # any_workflow_runs_tests=False on this same early-return path.
+            # any manager's lockfile -- this is a known fact, not a guess,
+            # same as any_workflow_runs_tests=False on this same early-return
+            # path.
+            lockfile_managers_verified_in_ci="",
             lockfile_verified_in_ci=False,
         )
 
     files = sorted([p for p in wf_dir.iterdir() if p.suffix in (".yml", ".yaml")])
     any_tests = False
     any_deploy = False
-    lockfile_verified = False
+    verified_managers: set[str] = set()
     triggers: set[str] = set()
     parse_errors = []
     for f in files:
@@ -255,8 +395,7 @@ def analyze_repo(repo: Path) -> CIGateResult:
             any_tests = True
         if _workflow_is_deploy_only(doc):
             any_deploy = True
-        if _workflow_verifies_lockfile(doc):
-            lockfile_verified = True
+        verified_managers |= _workflow_verified_lockfile_managers(doc)
         on = doc.get("on") or doc.get(True)  # YAML parses bare `on:` key as True in some loaders
         if isinstance(on, dict):
             triggers.update(on.keys())
@@ -278,7 +417,9 @@ def analyze_repo(repo: Path) -> CIGateResult:
         precommit_signals=";".join(precommit_signals),
         lockfile_present=bool(lockfiles_found),
         lockfiles_found=";".join(lockfiles_found),
-        lockfile_verified_in_ci=lockfile_verified,
+        lockfile_managers_found=";".join(lockfile_managers_found),
+        lockfile_managers_verified_in_ci=";".join(sorted(verified_managers)),
+        lockfile_verified_in_ci=bool(verified_managers),
     )
 
 
