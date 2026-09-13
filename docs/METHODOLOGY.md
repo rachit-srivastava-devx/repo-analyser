@@ -37,6 +37,42 @@ repo can have CI configured and still have `any_workflow_runs_tests=False`
 `.github/workflows` folder" is a proxy for "is gated," not the property
 itself.
 
+Two more gates, same "go look, don't infer" spirit:
+
+- **Pre-commit hook presence** (`has_precommit_hook`/`precommit_signals`):
+  `.pre-commit-config.yaml`, a `.husky/` directory, or a
+  `"pre-commit"`/`"lint-staged"` key in `package.json`, any one sufficient.
+  Independent of `.github/workflows` existing at all. Known, disclosed gap:
+  a standalone `.lintstagedrc`/`.lintstagedrc.json` file is not detected,
+  only the embedded `package.json` key.
+- **Lockfile discipline, attributed per package manager**
+  (`lockfile_present`/`lockfiles_found`, then `lockfile_managers_found`/
+  `lockfile_managers_verified_in_ci`): whether a lockfile is committed
+  (walked repo-wide, so a monorepo's per-package lockfiles all count), and
+  separately, per manager, whether some CI step actually *enforces* it
+  (`npm ci`, `poetry check`, `cargo build|test --locked`, `go mod verify` —
+  `npm install` is deliberately excluded, since it silently rewrites the
+  lockfile on drift instead of failing). Both `lockfile_managers_found` and
+  `lockfile_managers_verified_in_ci` are semicolon-joined manager-name
+  lists, the same CSV-friendly convention `flag_debt.csv`'s multi-value
+  fields use; a manager present in the first but not the second means that
+  manager's lockfile is committed but unenforced. This is a **per-manager**
+  question, not a single repo-wide boolean — a monorepo with an enforced
+  `npm` lockfile next to an unenforced `poetry` one reports both,
+  distinguishably, rather than one enforced command anywhere making the
+  whole repo look compliant.
+  - Matching is done against `run:` text with whole-line bash comments and
+    quoted-string spans stripped first, so a step that only *mentions* a
+    command — in a comment, or inside an `echo "..."` string — is not
+    mistaken for actually invoking it. This is still a regex over text, not
+    a shell parser: a real invocation deliberately wrapped in its own
+    quotes (e.g. `bash -c "npm ci"`) is not detected. Disclosed, not
+    silently wrong.
+  - Only npm/poetry/cargo/go have a wired-up enforcement command today;
+    pnpm/yarn/pipenv lockfiles are detected as *present* but can never show
+    as *verified* — a real coverage gap, not a claim that those managers
+    have no enforcement mechanism of their own.
+
 ### `api_contract/` — API/schema contract-discipline detection
 Answers `docs/checklist-by-repo-type/single-repo.md`'s "Interface & API
 Contract Stability" row via four independent, static signals — same
