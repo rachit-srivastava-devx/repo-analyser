@@ -126,29 +126,6 @@ list`, `git reflog`, and commit timestamps were all consistent with this run's o
 
 ## Still blocked / needs real work (not a quick follow-up)
 
-- **`testquality` extension has a real, confirmed "proxy for the property" defect — NOT fixed.**
-  Independent verification (result arrived ~12:49 IST, after this run's own new-work cutoff) found:
-  the `has_fuzz_tests`/`fuzz_tools` signal for **Python and JS** is presence-only (a dependency
-  listed in `requirements.txt`/`package.json`, never imported or used, reports identically to real
-  `@given`-decorated Hypothesis usage — confirmed with two adversarial fixtures, `fuzz_used/` vs.
-  `fuzz_dead/`, producing byte-identical `has_fuzz_tests=True` output). Go's branch, by contrast,
-  genuinely checks for `func Fuzz\w*(*testing.F)` usage — so the asymmetry across languages is real,
-  and the field name plainly asserts more than 2 of 3 branches verify, which is exactly the
-  disqualifying pattern `AGENTS.md` §6 names by name. **Smallest correct fix** (from the verifier,
-  not yet attempted): either (a) rename the Python/JS-scoped claim to something honest about scope
-  (e.g. a separate `fuzz_tooling_declared` vs. `fuzz_tooling_used` distinction), or (b) upgrade
-  Python/JS detection to match Go's rigor — grep for `@given` following a real hypothesis import in
-  Python, and `fc.assert(fc.property(`/`fc.assert_(` usage in JS. Also needed regardless: a
-  `docs/METHODOLOGY.md` entry for `testquality.py`'s pyramid/fuzz/snapshot signals (currently zero
-  mentions in that file — the one doc meant to carry exactly this kind of caveat is silent on it).
-  Lower-priority findings from the same verification, safe to defer further: the collector's own
-  file (`testquality.py`, 583 lines) is well over the ~80-line/file convention and — unlike
-  `doc_quality`/`observability`, restructured into packages the same session the extension was
-  added — was never split; and the three new signals (`pyramid_*`, `has_fuzz_tests`, `snapshot_*`)
-  are written to CSV but never surfaced in `deep_reports.py`/`per_repo_digest.py`/`exec_deck.py`
-  (dead output, not a correctness bug). **Do not merge a "fix" for this that only touches
-  docs/wiring without addressing the actual Python/JS detection-rigor gap** — that's the load-bearing
-  defect.
 - **`spdx_match.py`'s Apache-2.0/MPL-2.0 false-positive** — per the 2026-09-09 HANDOFF and this
   run's independent confirmation (full test suite run, ground truth checked): this was picked up and
   substantially improved by a human (merge `5b61c2c`, 2026-09-09 08:34 IST, well after the prior
@@ -164,9 +141,22 @@ list`, `git reflog`, and commit timestamps were all consistent with this run's o
 
 ## In-flight
 
-None. Every item this run started reached a resolved state (merged-and-verified, or
-FAIL-and-documented for next run) except `testquality`, whose FAIL result arrived after this run's
-own cutoff for starting new fix work — documented above, not silently left ambiguous.
+None. `testquality`'s Python/JS fuzz-detection proxy-for-the-property defect (found FAIL by this
+run's own scheduled pass, documented above as blocked at the time) was fixed and merged
+interactively afterward — merge commit `2602229` on top of `f752e99`+ (`46fc672`, fix branch
+`fix/testquality-fuzz-usage-detection`). Independently re-verified PASS in a fresh worktree before
+merge: the specific defect (declared-but-unused dependency reporting identically to real usage) is
+reproduced-then-fixed 4 independent ways, Go's branch confirmed unchanged/correct, no CSV shape
+change. One non-blocking gap disclosed, not yet fixed: none of the three fuzz-usage regexes are
+comment-aware (a commented-out `@given(...)`/`.assert(`/`func Fuzz...` still matches) — confirmed
+symmetric across all three ecosystems including the untouched Go path, so it's a pre-existing
+limitation of the whole regex-text-match technique, not a regression. Worth a follow-up note in
+`docs/METHODOLOGY.md`'s fuzz-signal bullet, not urgent.
+
+Remaining lower-priority items from that same verification, still not done (unchanged from before):
+`testquality.py` is still a 580+-line flat file, never restructured into a package; its 3 new
+signals (`pyramid_*`/`has_fuzz_tests`/`snapshot_*`) are still not wired into
+`deep_reports.py`/`per_repo_digest.py`/`exec_deck.py` (dead CSV-only output, not a correctness bug).
 
 ## Branch inventory (ground truth as of 2026-09-14 ~12:50 IST — checked directly this run)
 
@@ -191,12 +181,14 @@ paths remain.
 
 ## Ground truth confirmed at the end of this run
 
-`dev` at `9221e9a`, working tree clean. `.venv/bin/ruff check src/ tests/` → exit 0.
+`dev` at `2602229`, working tree clean. `.venv/bin/ruff check src/ tests/` → exit 0.
 `.venv/bin/mypy src/` → exit 0, 224 source files. `.venv/bin/python3 -m pytest -q` →
-**1479 passed, 14 skipped, 2 xfailed** (run directly by this session, on the actual current tip, not
+**1484 passed, 14 skipped, 2 xfailed** (run directly by this session, on the actual current tip, not
 copied from any self-report). The 2 xfails are both honestly-documented residual limitations (one in
-`license_compliance` from the prior spdx_match work, one new one in `ci_gates` from this run's own
-4-round fix) — not silent bugs.
+`license_compliance` from the prior spdx_match work, one in `ci_gates` from this run's own 4-round
+fix) — not silent bugs. (The scheduled portion of this run ended at `9221e9a`/1479-passed; the
+`testquality` fuzz-detection fix — see "In-flight" above — was completed interactively afterward and
+is included in this final count.)
 
 **Collector inventory** (for orientation, not exhaustive): 18 package-style collectors under
 `collectors/<name>/` (including this run's new `debt_markers`), 18 flat-file collectors still under
@@ -235,14 +227,11 @@ never a bare `python3 -m <tool>` in an unactivated shell (each Bash tool call is
 
 ## Immediate next steps for whoever/whatever picks this up
 
-1. **Fix `testquality`'s Python/JS fuzz-detection honesty gap** (see "Still blocked" above for the
-   exact smallest-fix options) — this is the highest-priority item, since it's a live, shipped
-   "proxy for the property" violation on this repo's own highest-stakes, most-quoted collector.
-   Builder → fresh-worktree verifier → merge, as always.
-2. Independently re-verify the last 2 of the original 9: `deps_audit` extension, the `trivy` fix.
-3. Optional, lower priority: `testquality.py`'s package restructuring (583 lines) and wiring its 3
-   new signals into `deep_reports.py`/`per_repo_digest.py` (currently dead CSV-only output).
-4. Re-scan `docs/checklist-by-repo-type/single-repo.md`'s remaining sections. "Codebase Structure &
+1. Independently re-verify the last 2 of the original 9: `deps_audit` extension, the `trivy` fix.
+2. Optional, lower priority: `testquality.py`'s package restructuring (580+ lines) and wiring its 3
+   static signals into `deep_reports.py`/`per_repo_digest.py` (currently dead CSV-only output); and
+   making its 3 fuzz-usage regexes comment-aware (see "In-flight" above).
+3. Re-scan `docs/checklist-by-repo-type/single-repo.md`'s remaining sections. "Codebase Structure &
    Internal Modularity" is now **fully covered** (confirmed this run by reading `codebase_modularity/
    __init__.py`'s own docstring: circular deps + fan-in/fan-out via `depgraph.py`, feature-flag debt
    via `flag_debt/`, size/god-class/layering via `codebase_modularity/` itself — nothing left in that
@@ -253,8 +242,8 @@ never a bare `python3 -m <tool>` in an unactivated shell (each Bash tool call is
    collector — no large, well-scoped, keyless single-repo gap was found this run beyond what got
    built. `polyrepo.md`/`monorepo.md` were not re-audited this run (time went to the verification
    backlog instead) — worth a fresh look next run before assuming they're thin too.
-5. Do not fan out more than 1-2 new builders per run unless verification capacity is confirmed
+4. Do not fan out more than 1-2 new builders per run unless verification capacity is confirmed
    available. This run's own experience: a single collector's fix cycle (`ci_gates`) consumed 4
    builder+verifier round-trips on its own — budget accordingly, and don't assume every FAIL is a
    quick one-round fix.
-6. Rewrite this file with real, git-verified state at the end of every run.
+5. Rewrite this file with real, git-verified state at the end of every run.
