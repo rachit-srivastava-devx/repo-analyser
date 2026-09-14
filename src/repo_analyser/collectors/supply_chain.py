@@ -25,6 +25,20 @@ CycloneDX's `components` array needs a real lockfile present to produce
 anything -- a bare `package.json` with no `package-lock.json` yields zero
 components, the same lockfile-only limitation deps_audit.py already has.
 
+Exit-code semantics (grounded empirically against the installed trivy
+0.74.0, not guessed): neither `trivy config` nor `trivy fs` is passed
+`--exit-code` (that flag alone controls whether *findings* change the exit
+code), so a successful scan -- with or without misconfigurations/
+components -- always exits 0 and always writes a valid report to
+`--output`, confirmed live on an empty target directory (exit 0, full
+JSON with no `Results` key) and a target with real findings (exit 0, JSON
+with `Results`/`Misconfigurations` populated). A non-zero exit was only
+ever observed for a genuine failure -- a nonexistent target path or an
+unknown flag both produced `FATAL` stderr, exit 1, and no output file at
+all. So "non-zero exit with no report ever written" is an unambiguous
+crash signal here, never a legitimate empty/clean result; see
+`_trivy_config_repo` and `_trivy_sbom_repo` below.
+
 `trivy config` passes `--skip-check-update`: before scanning anything,
 trivy tries to verify its embedded misconfig-check bundle against an OCI
 registry, and on a host where that lookup can't complete cleanly (no
@@ -45,7 +59,7 @@ import json
 from dataclasses import asdict, dataclass
 from pathlib import Path
 
-from ..core.util import run, write_csv, write_json
+from ..core.util import ToolExecutionError, run, write_csv, write_json
 
 
 @dataclass
@@ -62,10 +76,17 @@ class MisconfigFinding:
 
 def _trivy_config_repo(repo: Path, tmp_dir: Path) -> list[MisconfigFinding]:
     report = tmp_dir / f"{repo.name}.trivy-config.json"
-    run(["trivy", "config", str(repo), "--format", "json", "--output", str(report), "--quiet",
-         "--skip-check-update"],
-        check=False, timeout=180)
+    cmd = ["trivy", "config", str(repo), "--format", "json", "--output", str(report), "--quiet",
+           "--skip-check-update"]
+    result = run(cmd, check=False, timeout=180)
     if not report.exists() or not report.read_text().strip():
+        # No report -- either a genuinely empty/clean scan, or trivy crashed
+        # before writing anything. `--exit-code` is never passed, so exit 0
+        # always means "scan completed" (see module docstring); a non-zero
+        # exit here means it never got that far, and returning [] would be
+        # indistinguishable from "0 misconfigs found" (ADR-0001).
+        if result.returncode != 0:
+            raise ToolExecutionError(cmd, result.returncode, result.stderr)
         return []
     data = json.loads(report.read_text())
     out = []
@@ -83,11 +104,18 @@ def _trivy_config_repo(repo: Path, tmp_dir: Path) -> list[MisconfigFinding]:
 
 
 def _trivy_sbom_repo(repo: Path, sbom_dir: Path) -> tuple[Path | None, int]:
-    """Returns (sbom file path or None if nothing was produced, component count)."""
+    """Returns (sbom file path or None if nothing was produced, component count).
+
+    Same non-zero-exit-with-no-report reasoning as `_trivy_config_repo`:
+    that combination is a genuine `trivy fs` crash, not a legitimate
+    "no lockfile" result (a real no-lockfile scan still exits 0 and writes
+    a valid, zero-component CycloneDX document -- confirmed live)."""
     out_path = sbom_dir / f"{repo.name}.cyclonedx.json"
-    run(["trivy", "fs", str(repo), "--format", "cyclonedx", "--output", str(out_path), "--quiet"],
-        check=False, timeout=180)
+    cmd = ["trivy", "fs", str(repo), "--format", "cyclonedx", "--output", str(out_path), "--quiet"]
+    result = run(cmd, check=False, timeout=180)
     if not out_path.exists() or not out_path.read_text().strip():
+        if result.returncode != 0:
+            raise ToolExecutionError(cmd, result.returncode, result.stderr)
         return None, 0
     data = json.loads(out_path.read_text())
     return out_path, len(data.get("components", []))
