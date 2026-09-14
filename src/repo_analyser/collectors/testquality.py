@@ -13,12 +13,14 @@ Also reports three static signals that are NOT scoped to unit-only, since
 they answer a different, repo-wide question (what test *shape* exists,
 not whether the unit suite passed): test-pyramid shape (unit/integration/
 e2e/unclassified file counts, by directory-name heuristic -- see
-_pyramid_tier), fuzz/property-based test presence (hypothesis/fast-check/
-Go-native-fuzz, presence-only), and snapshot-test overuse (`.snap` file
-count plus a git-churn proxy for how often they get regenerated). All
-three are filesystem/git-history checks, computed the same way regardless
-of whether the unit-test execution above ran, skipped, or failed -- see
-_static_test_signals.
+_pyramid_tier), fuzz/property-based test *usage* (hypothesis/fast-check/
+Go-native-fuzz -- a real import-plus-invocation check in the same file,
+not a manifest-presence proxy; see _fuzz_signal's own docstring for why
+that distinction was tightened 2026-09-14), and snapshot-test overuse
+(`.snap` file count plus a git-churn proxy for how often they get
+regenerated). All three are filesystem/git-history checks, computed the
+same way regardless of whether the unit-test execution above ran,
+skipped, or failed -- see _static_test_signals.
 """
 from __future__ import annotations
 
@@ -388,14 +390,37 @@ def _scan_test_files_and_snapshots(repo: Path) -> tuple[dict[str, int], int]:
     return pyramid, snapshot_files
 
 
-# --- Fuzz / property-based test presence ---------------------------------
-# Presence-only: a dependency-manifest or function-signature grep, not a
-# check that any fuzz target actually runs or finds anything -- that would
-# be a real subprocess-execution feature on the scale of this file's own
-# pytest/go-test/npm-run-script execution above, out of scope here per the
-# roadmap's own "presence-only" wording.
-FUZZ_JS_PACKAGE = "fast-check"
-FUZZ_PYTHON_DEP_RE = re.compile(r"\bhypothesis\b", re.IGNORECASE)
+# --- Fuzz / property-based test usage -------------------------------------
+# Real usage, not manifest presence: independent adversarial verification
+# (2026-09-14) found the original Python/JS checks here were a dependency-
+# manifest grep -- a repo with `hypothesis` listed in requirements.txt but
+# never imported or invoked anywhere reported identically to a repo with a
+# real @given-decorated property test, under a field name (has_fuzz_tests)
+# that plainly claims tests exist. That's the exact "proxy for the
+# property" drift this repo's own AGENTS.md names by name ("'osv-scanner
+# ran' reported as 'no vulnerabilities'") -- Go's branch below never had
+# this problem, since Go's own native-fuzzing convention has no separate
+# manifest step to begin with, only a function signature to grep for. All
+# three ecosystems now require the same standard of evidence: an actual
+# import AND an actual invocation of the fuzzing construct, in the same
+# file -- still not a check that any fuzz target actually runs or finds
+# anything (that would be real subprocess execution, out of scope here per
+# the roadmap's own wording), but no longer confusable with an unused
+# dependency line. See docs/METHODOLOGY.md for the full before/after.
+HYPOTHESIS_IMPORT_RE = re.compile(
+    r"^\s*(?:from\s+hypothesis(?:\.\w+)*\s+import\b|import\s+hypothesis\b)", re.MULTILINE
+)
+HYPOTHESIS_GIVEN_USAGE_RE = re.compile(r"@(?:hypothesis\.)?given\s*\(")
+# fast-check's own documented usage shape is `<binding>.assert(<binding>.property(...))`;
+# the import line's bound name is captured (not hardcoded to "fc", though
+# that's the near-universal convention in fast-check's own docs) so a
+# renamed import is still matched correctly.
+FAST_CHECK_IMPORT_RE = re.compile(
+    r"^\s*(?:import\s+(?:\*\s+as\s+)?(\w+)\s+from\s+['\"]fast-check['\"]"
+    r"|const\s+(\w+)\s*=\s*require\(\s*['\"]fast-check['\"]\s*\))",
+    re.MULTILINE,
+)
+FAST_CHECK_JS_SUFFIXES = (".js", ".jsx", ".ts", ".tsx")
 # Go's own native fuzzing (1.18+) needs no dependency at all -- the signal
 # is a function *signature* convention (name prefix + the testing.F
 # parameter type), not a manifest entry. Requiring the *testing.F parameter
@@ -403,48 +428,60 @@ FUZZ_PYTHON_DEP_RE = re.compile(r"\bhypothesis\b", re.IGNORECASE)
 # that merely happens to start with "Fuzz" (e.g. "func FuzzyMatch(s
 # string) bool") from being counted.
 GO_FUZZ_FUNC_RE = re.compile(r"\bfunc\s+Fuzz\w*\s*\(\s*\w+\s+\*testing\.F\s*\)")
-# Root-level manifests only -- the same stated scope e2e_quality.py already
-# accepts for its own package.json/config-file checks. A nested
-# subproject's own requirements.txt (e.g. a monorepo's backend/
-# subdirectory) is a real, named gap, not a silent one.
-PYTHON_MANIFEST_GLOBS = ("requirements*.txt", "pyproject.toml", "Pipfile", "setup.cfg", "setup.py")
 
 
-def _js_declares_fast_check(repo: Path) -> bool:
-    pkg_path = repo / "package.json"
-    if not pkg_path.exists():
-        return False
-    try:
-        data = json.loads(pkg_path.read_text())
-    except (json.JSONDecodeError, OSError):
-        return False
-    all_deps = {**data.get("dependencies", {}), **data.get("devDependencies", {})}
-    return FUZZ_JS_PACKAGE in all_deps
-
-
-def _python_declares_hypothesis(repo: Path) -> bool:
-    """Dependency-manifest grep, deliberately not a full TOML/requirements
-    parser -- matches this signal's own "presence-only" scope. Checked with
-    a word-boundary regex so the English word "hypothesis" appearing in,
-    say, a project description doesn't also fire; accepted residual
-    false-positive risk: a *different*, hypothesis-ecosystem package (e.g.
-    a "hypothesis-jsonschema" strategy plugin) would also match here --
-    arguably still real evidence of Hypothesis-style property-based
-    testing in the repo, not a wrong answer."""
-    for pattern in PYTHON_MANIFEST_GLOBS:
-        for manifest in repo.glob(pattern):
-            if not manifest.is_file():
-                continue
-            try:
-                text = manifest.read_text(errors="ignore")
-            except OSError:
-                continue
-            if FUZZ_PYTHON_DEP_RE.search(text):
-                return True
+def _python_uses_hypothesis(repo: Path) -> bool:
+    """Requires both a real `from hypothesis import ...`/`import hypothesis`
+    line AND an actual `@given(...)` (or `@hypothesis.given(...)`) decorator
+    usage, in the SAME file -- mirrors _go_uses_native_fuzz's own
+    same-file, same-construct convention below. Scoped to TEST_FILE_RE-
+    matching .py files, since that's where a real property-based test
+    actually lives; a manifest-only mention with no matching test file is
+    exactly the "declared but never used" case this check now excludes."""
+    for p in repo.rglob("*.py"):
+        if any(part in EXCLUDE_DIR_PARTS for part in p.parts):
+            continue
+        rel = p.relative_to(repo).as_posix()
+        if not TEST_FILE_RE.search(rel):
+            continue
+        try:
+            text = p.read_text(errors="ignore")
+        except OSError:
+            continue
+        if HYPOTHESIS_IMPORT_RE.search(text) and HYPOTHESIS_GIVEN_USAGE_RE.search(text):
+            return True
     return False
 
 
-def _go_declares_native_fuzz(repo: Path) -> bool:
+def _js_uses_fast_check(repo: Path) -> bool:
+    """Requires a real `import ... from 'fast-check'` (or `require(...)`)
+    binding AND both `.property(` and `.assert(` called on that same
+    binding, in the SAME file -- same "declared but never used" exclusion
+    as _python_uses_hypothesis above. Scoped to TEST_FILE_RE-matching
+    .js/.jsx/.ts/.tsx files."""
+    for p in repo.rglob("*"):
+        if not p.is_file() or any(part in EXCLUDE_DIR_PARTS for part in p.parts):
+            continue
+        if p.suffix not in FAST_CHECK_JS_SUFFIXES:
+            continue
+        rel = p.relative_to(repo).as_posix()
+        if not TEST_FILE_RE.search(rel):
+            continue
+        try:
+            text = p.read_text(errors="ignore")
+        except OSError:
+            continue
+        m = FAST_CHECK_IMPORT_RE.search(text)
+        if not m:
+            continue
+        binding = re.escape(m.group(1) or m.group(2))
+        if (re.search(rf"\b{binding}\.assert\s*\(", text)
+                and re.search(rf"\b{binding}\.property\s*\(", text)):
+            return True
+    return False
+
+
+def _go_uses_native_fuzz(repo: Path) -> bool:
     """Scoped to *_test.go files only -- the only place Go's own tooling
     will ever recognize a fuzz target -- consistent with
     _analyze_go_repo's own *_test.go enumeration above."""
@@ -467,11 +504,11 @@ def _fuzz_signal(repo: Path) -> tuple[bool, str]:
     uncommon, case this should still answer honestly rather than only
     checking whichever language happens to have the most files."""
     tools = []
-    if _python_declares_hypothesis(repo):
+    if _python_uses_hypothesis(repo):
         tools.append("hypothesis")
-    if _js_declares_fast_check(repo):
+    if _js_uses_fast_check(repo):
         tools.append("fast-check")
-    if _go_declares_native_fuzz(repo):
+    if _go_uses_native_fuzz(repo):
         tools.append("go-native-fuzz")
     return bool(tools), ";".join(tools)
 

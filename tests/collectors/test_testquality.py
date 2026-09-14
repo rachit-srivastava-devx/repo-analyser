@@ -9,13 +9,13 @@ from repo_analyser.collectors.testquality import (
     _analyze_go_repo,
     _analyze_python_repo,
     _fuzz_signal,
-    _go_declares_native_fuzz,
-    _js_declares_fast_check,
+    _go_uses_native_fuzz,
+    _js_uses_fast_check,
     _parse_junit_xml,
     _parse_output,
     _pyramid_tier,
     _pytest_command,
-    _python_declares_hypothesis,
+    _python_uses_hypothesis,
     _scan_test_files_and_snapshots,
     _snapshot_churn_commits,
     analyze_repo,
@@ -396,37 +396,102 @@ class TestScanTestFilesAndSnapshots:
 
 
 class TestFuzzSignal:
-    def test_python_hypothesis_in_requirements_txt(self, tmp_path: Path) -> None:
+    def test_python_hypothesis_real_usage_is_true(self, tmp_path: Path) -> None:
+        repo = tmp_path / "repo"
+        tests_dir = repo / "tests"
+        tests_dir.mkdir(parents=True)
+        (tests_dir / "test_foo.py").write_text(
+            "from hypothesis import given\nimport hypothesis.strategies as st\n\n"
+            "@given(st.integers())\ndef test_addition_identity(x):\n    assert x + 0 == x\n"
+        )
+        assert _python_uses_hypothesis(repo) is True
+
+    def test_python_hypothesis_module_import_and_qualified_given_is_true(self, tmp_path: Path) -> None:
+        repo = tmp_path / "repo"
+        tests_dir = repo / "tests"
+        tests_dir.mkdir(parents=True)
+        (tests_dir / "test_bar.py").write_text(
+            "import hypothesis\nimport hypothesis.strategies as st\n\n"
+            "@hypothesis.given(st.text())\ndef test_reverse_twice(s):\n"
+            "    assert s[::-1][::-1] == s\n"
+        )
+        assert _python_uses_hypothesis(repo) is True
+
+    def test_python_hypothesis_declared_but_unused_is_false(self, tmp_path: Path) -> None:
+        """Regression test for the confirmed false positive independent
+        verification found on 2026-09-14: a dependency-manifest entry with
+        zero real @given usage anywhere must not be counted -- a dead
+        dependency and a real property test used to report identically."""
         repo = tmp_path / "repo"
         repo.mkdir()
         (repo / "requirements.txt").write_text("pytest==7.4\nhypothesis>=6.100\n")
-        assert _python_declares_hypothesis(repo) is True
+        tests_dir = repo / "tests"
+        tests_dir.mkdir()
+        (tests_dir / "test_foo.py").write_text("def test_basic():\n    assert 1 + 1 == 2\n")
+        assert _python_uses_hypothesis(repo) is False
 
-    def test_python_hypothesis_in_pyproject_toml(self, tmp_path: Path) -> None:
+    def test_python_hypothesis_mentioned_outside_a_test_file_is_false(self, tmp_path: Path) -> None:
+        # a @given usage sitting in a non-test-scoped file (no tests?/
+        # segment, no test_/​_test.py naming) is out of TEST_FILE_RE's
+        # scope, same convention _pyramid_tier already applies.
         repo = tmp_path / "repo"
         repo.mkdir()
-        (repo / "pyproject.toml").write_text(
-            '[tool.poetry.dependencies]\npython = "^3.10"\nhypothesis = "^6.100"\n'
+        (repo / "examples.py").write_text(
+            "from hypothesis import given\nimport hypothesis.strategies as st\n\n"
+            "@given(st.integers())\ndef demo(x):\n    print(x)\n"
         )
-        assert _python_declares_hypothesis(repo) is True
+        assert _python_uses_hypothesis(repo) is False
 
     def test_python_no_hypothesis_is_false(self, tmp_path: Path) -> None:
         repo = tmp_path / "repo"
         repo.mkdir()
         (repo / "requirements.txt").write_text("pytest==7.4\nrequests>=2.0\n")
-        assert _python_declares_hypothesis(repo) is False
+        assert _python_uses_hypothesis(repo) is False
 
-    def test_js_fast_check_in_dev_dependencies(self, tmp_path: Path) -> None:
+    def test_js_fast_check_real_usage_is_true(self, tmp_path: Path) -> None:
+        repo = tmp_path / "repo"
+        tests_dir = repo / "__tests__"
+        tests_dir.mkdir(parents=True)
+        (tests_dir / "foo.test.js").write_text(
+            "import fc from 'fast-check';\n\n"
+            "test('addition is commutative', () => {\n"
+            "  fc.assert(fc.property(fc.integer(), fc.integer(), (a, b) => a + b === b + a));\n"
+            "});\n"
+        )
+        assert _js_uses_fast_check(repo) is True
+
+    def test_js_fast_check_require_style_with_renamed_binding_is_true(self, tmp_path: Path) -> None:
+        repo = tmp_path / "repo"
+        tests_dir = repo / "tests"
+        tests_dir.mkdir(parents=True)
+        (tests_dir / "bar.spec.ts").write_text(
+            "const check = require('fast-check');\n\n"
+            "test('reverse twice', () => {\n"
+            "  check.assert(check.property(check.string(), (s) => "
+            "s.split('').reverse().reverse().join('') === s));\n"
+            "});\n"
+        )
+        assert _js_uses_fast_check(repo) is True
+
+    def test_js_fast_check_declared_but_unused_is_false(self, tmp_path: Path) -> None:
+        """Same regression class as the Python case above: a devDependency
+        entry with zero real fc.assert(fc.property(...)) usage must not be
+        counted."""
         repo = tmp_path / "repo"
         repo.mkdir()
         (repo / "package.json").write_text('{"devDependencies": {"fast-check": "^3.0.0"}}')
-        assert _js_declares_fast_check(repo) is True
+        tests_dir = repo / "__tests__"
+        tests_dir.mkdir()
+        (tests_dir / "foo.test.js").write_text(
+            "test('basic', () => { expect(1 + 1).toBe(2); });\n"
+        )
+        assert _js_uses_fast_check(repo) is False
 
     def test_js_no_fast_check_is_false(self, tmp_path: Path) -> None:
         repo = tmp_path / "repo"
         repo.mkdir()
         (repo / "package.json").write_text('{"devDependencies": {"jest": "^29.0.0"}}')
-        assert _js_declares_fast_check(repo) is False
+        assert _js_uses_fast_check(repo) is False
 
     def test_go_native_fuzz_function_signature_detected(self, tmp_path: Path) -> None:
         repo = tmp_path / "repo"
@@ -434,7 +499,7 @@ class TestFuzzSignal:
         (repo / "foo_test.go").write_text(
             'package foo\n\nimport "testing"\n\nfunc FuzzParse(f *testing.F) {\n}\n'
         )
-        assert _go_declares_native_fuzz(repo) is True
+        assert _go_uses_native_fuzz(repo) is True
 
     def test_go_fuzz_prefixed_name_without_testing_f_param_not_counted(self, tmp_path: Path) -> None:
         # the signature (a *testing.F parameter), not just the "Fuzz" name
@@ -445,7 +510,7 @@ class TestFuzzSignal:
         (repo / "foo_test.go").write_text(
             "package foo\n\nfunc FuzzyMatch(s string) bool {\n    return true\n}\n"
         )
-        assert _go_declares_native_fuzz(repo) is False
+        assert _go_uses_native_fuzz(repo) is False
 
     def test_no_fuzz_signal_anywhere_reports_false_and_empty(self, tmp_path: Path) -> None:
         repo = tmp_path / "repo"
@@ -455,11 +520,36 @@ class TestFuzzSignal:
         assert has_fuzz is False
         assert tools == ""
 
+    def test_fuzz_signal_end_to_end_reports_real_usage_for_python(self, tmp_path: Path) -> None:
+        # exercises the public _fuzz_signal entrypoint, not just the
+        # per-language helper, proving the tools string is populated too.
+        repo = tmp_path / "repo"
+        tests_dir = repo / "tests"
+        tests_dir.mkdir(parents=True)
+        (tests_dir / "test_foo.py").write_text(
+            "from hypothesis import given\nimport hypothesis.strategies as st\n\n"
+            "@given(st.integers())\ndef test_addition_identity(x):\n    assert x + 0 == x\n"
+        )
+        has_fuzz, tools = _fuzz_signal(repo)
+        assert has_fuzz is True
+        assert tools == "hypothesis"
+
     def test_multiple_tools_are_semicolon_joined(self, tmp_path: Path) -> None:
         repo = tmp_path / "repo"
-        repo.mkdir()
-        (repo / "requirements.txt").write_text("hypothesis>=6.0\n")
-        (repo / "package.json").write_text('{"devDependencies": {"fast-check": "^3.0.0"}}')
+        tests_dir = repo / "tests"
+        tests_dir.mkdir(parents=True)
+        (tests_dir / "test_foo.py").write_text(
+            "from hypothesis import given\nimport hypothesis.strategies as st\n\n"
+            "@given(st.integers())\ndef test_addition_identity(x):\n    assert x + 0 == x\n"
+        )
+        js_tests_dir = repo / "__tests__"
+        js_tests_dir.mkdir()
+        (js_tests_dir / "foo.test.js").write_text(
+            "import fc from 'fast-check';\n\n"
+            "test('addition is commutative', () => {\n"
+            "  fc.assert(fc.property(fc.integer(), fc.integer(), (a, b) => a + b === b + a));\n"
+            "});\n"
+        )
         has_fuzz, tools = _fuzz_signal(repo)
         assert has_fuzz is True
         assert set(tools.split(";")) == {"hypothesis", "fast-check"}
@@ -547,13 +637,30 @@ class TestAnalyzeRepoStaticSignals:
         assert result.snapshot_file_count == 0
 
     def test_fields_survive_a_real_python_test_run(self, tmp_path: Path) -> None:
+        # has_fuzz_tests/fuzz_tools is a text scan, not a runtime check, so
+        # it doesn't need the real `hypothesis` package installed -- but
+        # the executed test file's own `from hypothesis import given` DOES
+        # need SOMETHING importable at that name for pytest collection to
+        # succeed (the real package isn't a dependency of this repo). A
+        # minimal same-directory stub covers both: real enough for pytest's
+        # default sys.path "prepend" import mode to resolve it locally,
+        # and textually identical to a real hypothesis import/usage for
+        # _python_uses_hypothesis's own regex scan to match.
         repo = tmp_path / "repo"
         repo.mkdir()
-        (repo / "test_math.py").write_text("def test_add():\n    assert 1 + 1 == 2\n")
-        (repo / "requirements.txt").write_text("hypothesis>=6.0\n")
+        (repo / "hypothesis.py").write_text(
+            "def given(*_args, **_kwargs):\n"
+            "    def decorator(fn):\n        return fn\n"
+            "    return decorator\n"
+        )
+        (repo / "test_math.py").write_text(
+            "from hypothesis import given\n\n"
+            "def test_add():\n    assert 1 + 1 == 2\n\n"
+            "@given()\ndef test_add_identity():\n    assert 1 + 0 == 1\n"
+        )
         result = analyze_repo(repo, timeout=30)
         assert result.ran is True
-        assert result.tests_passed == 1
+        assert result.tests_passed == 2
         assert result.has_fuzz_tests is True
         assert result.fuzz_tools == "hypothesis"
 

@@ -640,6 +640,53 @@ AWS/DB/Redis infrastructure unavailable to this analysis, and reporting an
 infra timeout as a code defect would be exactly the kind of false claim
 this methodology exists to avoid.
 
+**Three additional static signals**, computed independently of whether the
+unit-test execution above ran, skipped, or failed (a repo `analyze_repo`
+skips entirely — wrong language, no unit-test script, no `node_modules` —
+still gets a real answer to all three, since none of them depend on
+actually being able to run the suite):
+
+- **Test-pyramid shape** (`pyramid_unit_files`/`pyramid_integration_files`/
+  `pyramid_e2e_files`/`pyramid_unclassified_files`) — a directory-name
+  heuristic only (`tests/unit/`, `tests/integration/`, `tests/e2e/` and
+  close variants), explicitly not ground truth. A flat `tests/` dir with no
+  tier subfolders, or a naming-only convention (`test_foo_unit.py` with no
+  directory signal), reports honestly as `unclassified` rather than being
+  silently miscounted into a tier or dropped.
+- **Fuzz/property-based test *usage*** (`has_fuzz_tests`/`fuzz_tools`) —
+  Hypothesis (Python), fast-check (JS/TS), and Go's own native `func
+  Fuzz*(*testing.F)` convention. **Fixed 2026-09-14**: the original
+  Python/JS checks were dependency-manifest presence only (a `hypothesis`
+  line in `requirements.txt`, or `fast-check` in `package.json`), so a
+  declared-but-never-imported dependency reported identically to a real
+  `@given`-decorated property test — independent adversarial verification
+  confirmed this with a byte-for-byte-identical-output fixture pair
+  (`fuzz_used/` vs. `fuzz_dead/`), and it's exactly the "proxy for the
+  property" pattern this repo's own `AGENTS.md` names by name. Go's branch
+  never had this problem, since Go's native-fuzzing convention has no
+  separate manifest step. All three ecosystems now require the same
+  standard of evidence: a real import **and** a real invocation of the
+  fuzzing construct, in the same file (`_python_uses_hypothesis`,
+  `_js_uses_fast_check`, `_go_uses_native_fuzz` in `testquality.py`) —
+  still not a check that any fuzz target actually runs or finds anything
+  (that would be real subprocess execution, out of scope here), but no
+  longer confusable with an unused dependency line.
+- **Snapshot-test overuse** (`snapshot_file_count`/`snapshot_churn_commits`/
+  `snapshot_churn_note`) — two named, deliberately crude proxies (a raw
+  `.snap` file count, and a `git log --follow -- '*.snap'` commit-count
+  churn signal), not a computed "overuse" ratio against any threshold.
+  Neither number can distinguish a real behavior-change update from a
+  rubber-stamped `--update-snapshots` masking an actual regression — a
+  real, stated limitation of what a static/history scan can answer, not
+  something a smarter regex would fix.
+
+Not yet done, tracked as follow-ups rather than silently dropped: these
+three signals are written to `testquality_runs.csv` but not yet surfaced
+in `deep_reports.py`/`per_repo_digest.py`/`exec_deck.py` (dead output, not
+a correctness bug); and `testquality.py` itself is a 580+-line flat file,
+well over this repo's ~80-line/file convention, never restructured into a
+package the way `doc_quality`/`observability`/`codebase_modularity` were.
+
 ### `effort.py` — effort allocation & toil clusters
 Per-author and monthly breakdowns of the ontology superclasses, plus
 mechanical toil-cluster detection: non-delivery commits are grouped by
