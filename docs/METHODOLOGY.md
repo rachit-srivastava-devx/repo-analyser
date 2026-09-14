@@ -1412,4 +1412,12 @@ own construction failures is less trustworthy than one that shows them.
     the OCI lookup entirely and goes straight to the embedded bundle.
     Verified directly (`trivy config <fixture> --skip-check-update`
     finishes in ~2s and itemizes `DS-0002` in the output) before touching
-    the collector.
+    the collector. Residual limitation, disclosed rather than fixed: the
+    regression test for this (`test_dockerfile_running_as_root_is_flagged_for_real`)
+    cannot currently distinguish "the `--skip-check-update` fix is present"
+    from "it was silently reverted," because on this machine right now the
+    OCI check-update step happens to resolve/complete fast regardless, so
+    the test passes either way -- reproducing the original hang needs a
+    reproducibly slow/hanging network state (e.g. a blocked-egress or
+    broken-credential-helper environment) that isn't available to automate
+    here.

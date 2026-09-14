@@ -12,7 +12,7 @@ from repo_analyser.collectors.supply_chain import (
     _trivy_sbom_repo,
     run_supply_chain,
 )
-from repo_analyser.core.util import RunResult
+from repo_analyser.core.util import RunResult, ToolExecutionError
 
 HAS_TRIVY = shutil.which("trivy") is not None
 
@@ -51,12 +51,45 @@ class TestTrivyConfigRepo:
         assert len(f.message) <= 200  # truncated
 
     def test_no_report_produced_returns_empty(self, tmp_path: Path, monkeypatch) -> None:
+        # Hypothetical/defensive case: exit 0 with no report at all. Real
+        # trivy never does this (a genuine successful scan always writes a
+        # valid report, confirmed live even against an empty target dir) --
+        # this guards the branch anyway since exit code, not file presence
+        # alone, is what now decides crash-vs-clean.
         repo = tmp_path / "repo"
         repo.mkdir()
         tmp_dir = tmp_path / "tmp"
         tmp_dir.mkdir()
         monkeypatch.setattr(supply_chain, "run", lambda *a, **k: RunResult([], 0, "", ""))
         assert _trivy_config_repo(repo, tmp_dir) == []
+
+    def test_crash_before_report_written_raises_not_silent_empty(
+        self, tmp_path: Path, monkeypatch
+    ) -> None:
+        # Regression test for the real bug an independent verifier found:
+        # a fake/stub trivy that exits non-zero and never writes the report
+        # (bad args, corrupted embedded bundle, permission error -- any
+        # genuine crash) used to be silently reported as "0 misconfigs
+        # found", indistinguishable from a real clean repo. Reproduced with
+        # a fixture Dockerfile (`USER root`) that should have been flagged;
+        # this must now raise, not return [].
+        repo = tmp_path / "repo"
+        repo.mkdir()
+        (repo / "Dockerfile").write_text("FROM ubuntu:20.04\nUSER root\n")
+        tmp_dir = tmp_path / "tmp"
+        tmp_dir.mkdir()
+
+        def fake_crash_run(cmd, **kwargs):
+            # No output file written at all -- mirrors a real trivy FATAL
+            # exit (bad flags, unreadable target, crashed bundle) confirmed
+            # live: nonexistent target and an unknown flag both exited 1
+            # with stderr and zero bytes written to --output.
+            return RunResult(cmd, 1, "", "FATAL Fatal error: something in trivy blew up")
+
+        monkeypatch.setattr(supply_chain, "run", fake_crash_run)
+        with pytest.raises(ToolExecutionError) as exc_info:
+            _trivy_config_repo(repo, tmp_dir)
+        assert "something in trivy blew up" in str(exc_info.value)
 
     def test_clean_repo_with_only_successes_yields_no_findings(self, tmp_path: Path, monkeypatch) -> None:
         # Regression guard for the real, grounded behavior: trivy only itemizes
@@ -120,15 +153,42 @@ class TestTrivySbomRepo:
         assert path is not None
         assert count == 0
 
-    def test_no_output_file_returns_none(self, tmp_path: Path, monkeypatch) -> None:
+    def test_no_output_file_but_clean_exit_returns_none(self, tmp_path: Path, monkeypatch) -> None:
+        # Hypothetical/defensive case, exit 0 with no file at all (real
+        # trivy never does this -- see _trivy_config_repo's equivalent
+        # test). Distinguishes "genuinely nothing to report" from a crash,
+        # which is covered separately below.
         repo = tmp_path / "repo"
         repo.mkdir()
         sbom_dir = tmp_path / "sbom"
         sbom_dir.mkdir()
-        monkeypatch.setattr(supply_chain, "run", lambda *a, **k: RunResult([], 1, "", ""))
+        monkeypatch.setattr(supply_chain, "run", lambda *a, **k: RunResult([], 0, "", ""))
         path, count = _trivy_sbom_repo(repo, sbom_dir)
         assert path is None
         assert count == 0
+
+    def test_crash_before_output_written_raises_not_silent_none(
+        self, tmp_path: Path, monkeypatch
+    ) -> None:
+        # Regression test mirroring _trivy_config_repo's: a fake trivy that
+        # exits non-zero and writes no CycloneDX output at all is a genuine
+        # crash (bad args, corrupted bundle, permission error), not a
+        # legitimate "no lockfile" result -- a real no-lockfile scan still
+        # exits 0 and writes a valid zero-component document (confirmed
+        # live). This used to come back as a silent (None, 0), identical to
+        # the legitimate case; it must now raise instead.
+        repo = tmp_path / "repo"
+        repo.mkdir()
+        sbom_dir = tmp_path / "sbom"
+        sbom_dir.mkdir()
+
+        def fake_crash_run(cmd, **kwargs):
+            return RunResult(cmd, 1, "", "FATAL Fatal error: trivy fs blew up")
+
+        monkeypatch.setattr(supply_chain, "run", fake_crash_run)
+        with pytest.raises(ToolExecutionError) as exc_info:
+            _trivy_sbom_repo(repo, sbom_dir)
+        assert "trivy fs blew up" in str(exc_info.value)
 
 
 class TestRunSupplyChain:
