@@ -1,211 +1,260 @@
 # Handoff — checklist-by-repo-type backlog
 
-Last updated: 2026-09-09 (~02:55 IST), by the scheduled run, at its actual end.
+Last updated: 2026-09-14 (~12:50 IST), by the scheduled run, at its actual end (ran well past the
+intended 1:00am-10:00am IST window — see "Anomaly this run" below).
 
 ## Read this whole file before doing anything. Do not trust any other summary of prior state.
 
-## IMPORTANT — two sessions ran on this repo concurrently tonight, undocumented
+This file replaces the 2026-09-09 version entirely. Everything below was personally git-verified
+this run (`git log`, `git rev-list --count`, `git diff --stat`, real command output) — nothing was
+copied forward from the old file without re-checking.
 
-This run (the 1:00am scheduled task) discovered, part-way through, that a **second, separately
-running session was actively building and merging to `dev` in real time**, starting from sometime
-before this run began and continuing until roughly 02:17–02:40 IST, when it appears to have
-stopped or crashed (no further commits, and a verification worktree it had just started setting up
-for `monorepo_tooling` was left with only a fresh `.venv` and nothing else — no test run, no
-report). That session merged **7 collectors/extensions in ~2 hours** (`api_contract`,
-`migration_hygiene`, a `trivy` CI-hang fix, `notebook_quality`, `testquality` extension, `ci_gates`
-extension, `observability`, `doc_quality`, `deps_audit` extension, `design_docs`) without ever
-updating this file. This scheduled run independently re-verified two of the highest-risk/least-
-documented items from that session (`migration_hygiene`, and the still-open `spdx_match` fix) from
-scratch, and finished the one item (`monorepo_tooling`) the other session had built but not merged.
+## Anomaly this run — a single verification agent ran ~10.4 hours wall-clock
 
-**Lesson for whoever runs this next**: if `docs/HANDOFF.md` looks stale relative to `git log
---oneline dev`, do not assume the file is merely out of date by a normal amount — check whether
-another session might still be live (recent commit timestamps, worktrees with fresh `.venv`s but no
-test output, `git worktree list` entries not mentioned anywhere in this file) before doing anything
-that touches `dev` or this file, to avoid a collision. This run held off starting any new build work
-for over 90 minutes specifically because of this.
+The independent re-verification of the `testquality` extension (dispatched ~02:52 IST) did not
+return until ~12:49 IST — its own `duration_ms` was `37,590,267` (~10.4 hours), far outside every
+other agent this run (15-60 minutes each). This blew the intended 1:00am-10:00am IST working window
+by ~2.8 hours and meant the run could not fix-and-reverify that FAIL within-run as it otherwise
+would have (the "no new builder dispatch after ~8:00-8:30am" rule was already in effect by the time
+the result came back). **Flagging for whoever schedules/monitors future runs**: if a single
+dispatched agent runs this long again, it's worth investigating whether something hung (an
+unresponsive subprocess, a retry loop) rather than assuming it's normal verification depth — this
+run has no way to know which it was, since the result that came back was coherent and well-evidenced,
+not garbage. No other anomaly (no evidence of a second concurrent session this time; `git worktree
+list`, `git reflog`, and commit timestamps were all consistent with this run's own actions).
 
 ## Merged to `dev` this run (independently verified — safe to build on)
 
-- **`migration_hygiene`** — merge commit `8480636` (merged by the other session; independently
-  re-verified from scratch by this run in a fresh worktree+venv, detached at `efc5dc7`, never
-  touching `dev`/the branch myself). PASS: 1063 passed/10 skipped, ruff/mypy clean, 96-100%
-  coverage per file. Adversarially rebuilt the claimed bug fix (multi-app Django false-positive
-  duplicate detection) with an independently-constructed fixture — confirmed the fix is real: a
-  cross-app same-numbered migration (`app1/migrations/0001_initial.py` vs
-  `app2/migrations/0001_initial.py`, legitimate in Django) is no longer flagged, while a genuine
-  same-app duplicate still is. Also verified graceful handling of empty repos, non-Django repos,
-  committed DB files/SQL dumps via git-blob content signatures, and orphaned migrations. Not wired
-  into `cli.py` — allowed per `AGENTS.md` §9, tracked as a follow-up, not a blocker.
-- **`monorepo_tooling`** — merge commit `a21fd78` (completed by this run — the other session had
-  built it at `27b6d3e` and started a verification worktree but never finished or merged it).
-  Independently verified in a fresh worktree+venv: PASS, 1039 passed standalone with 100% coverage
-  on every file in the new package, ruff/mypy clean. **The branch did not merge cleanly onto current
-  `dev`** — one trivial conflict in `docs/METHODOLOGY.md` (both branches added a new `###` doc
-  section at the same anchor point; zero `.py` conflicts) — resolved by concatenating both new
-  sections. Re-ran the full suite after the merge commit: **1358 passed**. Detects Nx/Turborepo/
-  Bazel/Buck2/Pants (any combination) via static config presence/shape only — no live build-graph
-  execution (`bazel query`/`nx graph`/etc.), documented as out of scope in `docs/METHODOLOGY.md`.
-  Verifier built independent fixtures for all 5 tools individually, a two-tool mid-migration repo,
-  malformed configs, a 5000-file BUILD-file scan (0.25s, not pathological), and non-git/nonexistent
-  paths — all handled correctly with no crashes. Not wired into `cli.py` — not a blocker.
+- **`debt_markers`** — new collector, merge commit `f908667`. Answers single-repo.md's
+  "Tech debt backlog size & age" row: TODO/FIXME/HACK/XXX/BUG marker count + git-blame-derived age,
+  pure git+regex, no new external tool. **Went through 2 verification rounds**: round 1 FAILED on 3
+  real defects (a multi-line Python triple-quoted string false-positive contradicting the module's
+  own docstring claim; an uncaught `UnicodeDecodeError` crash on a commit with invalid-UTF8 author
+  bytes, killing the whole portfolio run; and the original builder's own "0 markers in this repo's
+  own tree, cross-checked via git grep" claim didn't reproduce — real count was 2, and the verifier's
+  `git grep -E '\bTODO\b'` cross-check tool itself doesn't honor `\b` on this platform's git 2.51.0).
+  All 3 fixed on the same branch (commit `9bc1a45`), each with a regression test proven via
+  revert-and-check (test fails pre-fix, passes post-fix). Round 2 (fresh worktree, brand-new
+  fixtures, not reused from round 1) — **PASS**: 100% coverage on every file in the package, all
+  previously-passing behavior (batching, git-mv rename handling, staged-only markers, submodule
+  paths) spot-checked and still correct. Not wired into `cli.py` — allowed per `AGENTS.md` §9, not
+  a blocker.
+- **`ci_gates` lockfile-verification fix** — fix-forward to an already-shipped extension (original
+  extension was `3cddf15`, merged before this run started), merge commit `9221e9a`. **Went through
+  4 verification rounds**, each finding a real, different problem, each fixed before the next round:
+  1. Original extension had 2 real bugs: an `echo "npm ci"`-style string was wrongly counted as a
+     real invocation (false positive), and a monorepo with mixed npm/poetry compliance collapsed to
+     one misleading repo-wide boolean (conflation, violating `AGENTS.md` §4's "don't average two
+     different measurements" rule). Fixed with quoted/commented-text stripping + per-manager
+     attribution (`lockfile_managers_found`/`lockfile_managers_verified_in_ci`).
+  2. That fix's first draft **removed** the already-shipped `lockfile_verified_in_ci` CSV column —
+     a breaking format change `AGENTS.md` §8/§10 requires human sign-off for, which nobody could give
+     in an unattended run. Resolved by making the fix purely additive: `lockfile_verified_in_ci`
+     restored as a derived "any manager verified" aggregate, both old and new columns coexist.
+  3. The quote-stripping regex from fix #1 let an unbalanced single quote (a plain English
+     contraction like "Don't" in an echoed string) span across newlines and silently swallow a real
+     `npm ci` step later in the same block — a new, undisclosed silent-false-negative regression.
+     Fixed by excluding `\n` from the regex's character classes.
+  4. That fix in turn made a **genuine multi-line quoted string** (real, valid bash — e.g. a
+     multi-line `echo "..."` release-notes message) get checked line-by-line instead of as one span,
+     so command-shaped text *inside* a real quoted string could be wrongly counted as a real
+     invocation — a new false positive, symmetric to the false negative fixed in step 3. **This
+     round-trip (fix A causes bug B, fix B causes bug A's sibling) is structurally identical to this
+     repo's own `spdx_match.py` precedent** (3 failed window/proximity patches, documented in this
+     file's 2026-09-09 version) — so rather than attempt a 5th regex patch on the same heuristic-
+     approach family, the decision was made to keep the round-3 fix as-is and honestly document the
+     residual limitation instead: an inaccurate in-code comment claiming "quotes are always
+     single-line in every shell dialect" was corrected, the limitation was written into
+     `docs/METHODOLOGY.md` symmetrically next to the already-disclosed `bash -c "npm ci"`
+     false-negative gap, and an `@pytest.mark.xfail(strict=True)` regression test documents it
+     (following `test_spdx_match.py`'s own established convention for this exact situation).
+  Round 4 (final) verification confirmed: all 3 original bugs still fixed, the xfail is genuine
+  (not silently passing), the disclosed limitation is accurate (independently reproduced), no scope
+  creep (diff touches only `ci_gates.py`/its tests/`docs/METHODOLOGY.md`), and no downstream
+  consumer reads the affected columns today. **PASS, merged.**
 
-## Merged to `dev` by the other session tonight (NOT independently re-verified by this run —
-each carries only that session's own self-report; treat with the usual "verify before trusting"
-discipline before building further on top of any of these)
+## Independently re-verified this run (from the 9 items the 2026-09-09 run's HANDOFF flagged as
+"merged by another session, never independently checked")
 
-- `api_contract` — merge commit `f92e1c8`. Static OpenAPI/GraphQL/Protobuf spec + CI breaking-
-  change-tool + contract-test-tool + deprecation-marker detection. Self-reported: 1008 passed/5
-  skipped, 99% coverage on the package, ruff/mypy clean. Self-reported non-blocking follow-ups: its
-  own CI-tool-name detection is narrower than its docstring claims for `graphql-inspector`/
-  `openapi-diff`/`swagger-diff`/`buf breaking` (name/phrase-only, no invocation-shape gating like
-  `oasdiff` gets); `docs/METHODOLOGY.md` says "six known tools" where `patterns.py` defines five.
-- `notebook_quality` (`e2d6e6c`), `testquality` extension (`6d215e2`), `ci_gates` extension
-  (`3cddf15`), `observability` (`e5ed88c`), `doc_quality` (`1b7f613`), `deps_audit` extension
-  (`ee91e79`), `design_docs` (`59fb16d`), a `trivy --skip-check-update` CI-hang fix (`f38e619`) —
-  all self-reported clean by the other session's own commit/merge messages, none independently
-  re-verified by this run. `observability` and `doc_quality` each note their own flat source files
-  were restructured into proper `collectors/<name>/` packages mid-session to respect the ~80-line
-  cap (`6c16722`, `88b09f8`) — worth a quick sanity read before extending either.
+- **`api_contract`** — **PASS**. Both of its own self-reported follow-ups confirmed real (CI-tool
+  detection narrower than docstring claims; METHODOLOGY.md said "six known tools" where
+  `patterns.py` defines five). Found and fixed one more, undisclosed: README claimed `.changeset/`
+  semver-discipline detection with zero corresponding code anywhere in the package (confirmed by
+  grep and a real fixture — identical output whether `.changeset/` present or absent). Fixed in
+  commit `033dfba` (README + METHODOLOGY.md + a stale "schema_kind enum" docstring reference that
+  doesn't exist in the code — all doc-only, no code defect).
+- **`observability`** — **PASS**, clean. 22 independently-built adversarial fixtures across all 4
+  signals (structured logging, metrics, tracing, k8s probes) all behaved exactly as documented; the
+  "presence not usage" limitation is honestly disclosed in-code, not oversold in README. Only gap:
+  `docs/METHODOLOGY.md` has zero section for this collector at all (unlike siblings merged the same
+  session) — noted as a follow-up, not fixed this run.
+- **`doc_quality`** — **PASS**, clean. `interrogate` dependency registration confirmed real and
+  correctly wired through `core.util.run()`. Coverage-percentage cross-checked exactly against
+  interrogate's own CLI output on a hand-built fixture. Every edge-case-ladder rung (missing tool,
+  no tags, malformed encoding, unsupported language, tool crash) degrades honestly. No code defect
+  found.
+- **`notebook_quality`** — **PASS**. 21/21 independently-built adversarial fixtures passed (real
+  uncleared-output detection, non-linear execution-count detection including the null-`execution_count`
+  edge case, secret-pattern false-positive avoidance, malformed/ancient-nbformat handling). Found the
+  merge commit's own self-report overstated "huge notebooks covered" (zero large-notebook test existed
+  in the merged suite, though the underlying code does handle it correctly and fast — 0.28s at
+  ~200MB). Found and fixed one stale-doc issue: `docs/ROADMAP.md`'s planned column list predated the
+  shipped `notebooks_unparseable` field. Fixed in commit `f752e99` (doc-only).
+- **`design_docs`** — **FAIL → resolved as doc-only fix, commit `7ea9364`.** The collector's actual
+  logic (including the `533c3b2` rename-tracking fix, reproduced against raw `git log --follow
+  --reverse` ground truth) is correct — every adversarial fixture behaved right. But README claimed
+  C4/Structurizr/PlantUML diagram detection with **zero** corresponding code anywhere in the package
+  (confirmed by grep and a fixture: a repo with only a genuine `.dsl`+`.puml` pair produced
+  byte-identical output to one with no architecture docs at all) — same defect class as
+  `api_contract`'s `.changeset/` claim. Fixed: removed the false claim from README, and added two
+  further undisclosed-but-real limitations found the same pass to `docs/METHODOLOGY.md`: HLD/ADR/
+  runbook checks are root-scoped only (a monorepo's subpackage-local docs are silently invisible),
+  and `tally_adrs` runs one `git log --follow` subprocess per accepted ADR with no batching (~75s at
+  3000 ADRs in one repo, real but bounded).
+- **`ci_gates` extension** — **FAIL, then fixed and re-verified PASS** — see "Merged to `dev` this
+  run" above for the full 4-round story.
+- **`testquality` extension** — **FAIL, NOT fixed this run** (verification result arrived after the
+  time-box for new builder dispatch had passed — see "Anomaly this run" and "Still blocked" below).
 
-**Ground truth confirmed at the end of this run**: `dev` at `a21fd78`, working tree clean.
-`.venv/bin/ruff check src/ tests/` → exit 0. `.venv/bin/mypy src/` → exit 0, 206 source files.
-`.venv/bin/python3 -m pytest -q` → **1358 passed** (run directly by this session, on the actual
-current tip, after the `monorepo_tooling` merge commit — not copied from any self-report).
+## Still not independently re-verified (2 of the original 9 remain)
 
-**Environment note, still true**: always invoke pytest/ruff/mypy via `.venv/bin/python3 -m <tool>`,
-never a bare `python3 -m <tool>` in an unactivated shell (each Bash tool call is a fresh shell).
+- **`deps_audit` extension** (license-compliance column + Python/Go staleness parity, `ee91e79`) —
+  not touched this run. Next run: pick this up if capacity allows.
+- **`trivy --skip-check-update` CI-hang fix** (`f38e619`) — not touched this run. Lower priority
+  than a collector re-verification (it's a config-flag fix, not new detection logic), but still
+  technically unverified per this repo's own "never trust self-report" rule.
 
-## Still blocked / needs real design work (not a quick follow-up)
+## Still blocked / needs real work (not a quick follow-up)
 
-- **`spdx_match.py`'s Apache-2.0/MPL-2.0 false-positive is STILL NOT fixed — third attempt also
-  independently verified and REJECTED this run.** Branch `fix/spdx-ordered-signature-match` now has
-  3 commits: `ba6e469` (declared-order matching — verified FAILED, recorded previously), `f0d603c`
-  (section-bounded phrases — never independently verified, made by the other session sometime
-  before this run without any record), `084bd15` ("rank satisfiable signatures by tightest phrase
-  window" — independently verified THIS run, **FAILS**). The tightest-window approach fixes the
-  literal counter-example from the previous rejection but fails a structurally identical sibling:
-  comparing raw character-span widths across signatures with different phrase lengths is inherently
-  biased toward whichever license's signature phrases are shorter, independent of which text is the
-  genuine license grant. Confirmed with an independently-built adversarial fixture (a short, natural
-  sentence bare-mentioning "the Apache License" immediately followed by a genuine MPL-2.0 block —
-  misclassifies as `Apache-2.0`), and confirmed this is not a one-off: the builder's own test suite
-  already contains `test_bare_license_name_mention_does_not_beat_genuine_mit_text`, marked
-  `@pytest.mark.xfail(strict=True)`, whose docstring self-admits the same bug class ships unfixed.
-  File-size cap also still violated: now split across two files, `spdx_match.py` (97 lines) +
-  `spdx_window.py` (111 lines) — worse in aggregate than the single 114-line file from attempt one.
-  **Also newly discovered this run: the branch is now 27 commits stale relative to current `dev`**
-  (built at `03f4bae`) and would need a rebase before any future merge attempt regardless of the
-  correctness fix. **What's actually needed, unchanged from before**: a design that distinguishes a
-  genuine license grant from an incidental name-drop — most likely per-license-section text
-  splitting (find the boundaries of each license's own block and match within them, not comparing
-  window-widths across the whole flat document) — real design work, not another proximity/window
-  metric. **Do not merge `fix/spdx-ordered-signature-match` as-is; do not attempt a fourth
-  window/proximity-based patch — that entire approach family has now failed three times.**
-- **`affected.py`'s need to execute the target repo's own build**: still fully open, no branch
+- **`testquality` extension has a real, confirmed "proxy for the property" defect — NOT fixed.**
+  Independent verification (result arrived ~12:49 IST, after this run's own new-work cutoff) found:
+  the `has_fuzz_tests`/`fuzz_tools` signal for **Python and JS** is presence-only (a dependency
+  listed in `requirements.txt`/`package.json`, never imported or used, reports identically to real
+  `@given`-decorated Hypothesis usage — confirmed with two adversarial fixtures, `fuzz_used/` vs.
+  `fuzz_dead/`, producing byte-identical `has_fuzz_tests=True` output). Go's branch, by contrast,
+  genuinely checks for `func Fuzz\w*(*testing.F)` usage — so the asymmetry across languages is real,
+  and the field name plainly asserts more than 2 of 3 branches verify, which is exactly the
+  disqualifying pattern `AGENTS.md` §6 names by name. **Smallest correct fix** (from the verifier,
+  not yet attempted): either (a) rename the Python/JS-scoped claim to something honest about scope
+  (e.g. a separate `fuzz_tooling_declared` vs. `fuzz_tooling_used` distinction), or (b) upgrade
+  Python/JS detection to match Go's rigor — grep for `@given` following a real hypothesis import in
+  Python, and `fc.assert(fc.property(`/`fc.assert_(` usage in JS. Also needed regardless: a
+  `docs/METHODOLOGY.md` entry for `testquality.py`'s pyramid/fuzz/snapshot signals (currently zero
+  mentions in that file — the one doc meant to carry exactly this kind of caveat is silent on it).
+  Lower-priority findings from the same verification, safe to defer further: the collector's own
+  file (`testquality.py`, 583 lines) is well over the ~80-line/file convention and — unlike
+  `doc_quality`/`observability`, restructured into packages the same session the extension was
+  added — was never split; and the three new signals (`pyramid_*`, `has_fuzz_tests`, `snapshot_*`)
+  are written to CSV but never surfaced in `deep_reports.py`/`per_repo_digest.py`/`exec_deck.py`
+  (dead output, not a correctness bug). **Do not merge a "fix" for this that only touches
+  docs/wiring without addressing the actual Python/JS detection-rigor gap** — that's the load-bearing
+  defect.
+- **`spdx_match.py`'s Apache-2.0/MPL-2.0 false-positive** — per the 2026-09-09 HANDOFF and this
+  run's independent confirmation (full test suite run, ground truth checked): this was picked up and
+  substantially improved by a human (merge `5b61c2c`, 2026-09-09 08:34 IST, well after the prior
+  scheduled run's own rejection at ~03:00 IST that same morning — a real person came back and merged
+  it, overriding the prior run's "do not merge as-is" recommendation). Current state, personally
+  verified this run: **1 xfail remains** (`test_bare_license_name_mention_does_not_beat_genuine_mit_text`
+  or its current equivalent — a documented, honestly-marked residual limitation, not a silent bug),
+  full suite green. This is now in a stable, honestly-documented state — **not** still "blocked" the
+  way the 2026-09-09 file described; downgrading this from "still blocked" to "stable, 1 known
+  documented limitation, no action needed" based on direct verification, not on the old file's word.
+- **`affected.py`'s need to execute the target repo's own build** — still fully open, no branch
   exists, no decision made (unchanged for several runs now).
 
 ## In-flight
 
-None. Every item this run touched (2 independent verifications + 1 completed merge) reached a
-resolved PASS/FAIL/merged state. The other session's 9 merges from earlier tonight are also all
-resolved (merged), just not independently re-verified by this run — see the section above.
+None. Every item this run started reached a resolved state (merged-and-verified, or
+FAIL-and-documented for next run) except `testquality`, whose FAIL result arrived after this run's
+own cutoff for starting new fix work — documented above, not silently left ambiguous.
 
-## CRITICAL — re-verify everything yourself; this has burned real time more than once
+## Branch inventory (ground truth as of 2026-09-14 ~12:50 IST — checked directly this run)
 
-Binding on every future run, interactive or scheduled: never act on a subagent's (or a prior doc's,
-or a git commit message's) claim that something "already exists", "is already merged", "is broken
-in way X", or has some line count/completeness — re-verify the concrete, checkable fact yourself
-(`git log`, `git diff --stat`, `git rev-list --count`, `wc -l`, actually reading the file). This run
-adds a new instance of the same discipline mattering: this file itself (the version at the start of
-this run) was already stale by ~2.5 hours' worth of undocumented merges from a second concurrent
-session before this run even started reading it — don't assume this file is current just because it
-says "Last updated" recently; cross-check against `git log --oneline dev` regardless.
+**Currently existing branches**: `dev`, `main`. That's it — `git branch -a` confirms. Every
+worktree and branch created by this run's own agents (builders and verifiers, ~14 dispatched total)
+was cleaned up after confirming `git merge-base --is-ancestor <tip> dev` for each: `debt_markers`'s
+2 branches, `ci_gates`'s fix branch plus every verifier's own branch/worktree across all 4 rounds,
+and every read-only verifier worktree for `api_contract`/`observability`/`doc_quality`/
+`notebook_quality`/`design_docs`/`testquality`. `git worktree list` shows only the main repo
+worktree; no stray `.claude/worktrees/agent-*` directories or `/private/tmp/verifier-worktrees/*`
+paths remain.
 
-## Branch inventory (ground truth as of 2026-09-09 02:55 IST — checked directly this run)
+## AGENTS.md §2.2 / §8 human sign-off gate — status
 
-**Currently existing branches**: `dev`, `main`, `fix/spdx-ordered-signature-match` (real, rejected
-3x, see above — keep). That's it. Every `worktree-agent-*` placeholder branch that existed at the
-start of this run has now been resolved one way or another:
-
-- Built and merged this run or by the other session tonight: `worktree-agent-a3a1dd75e1f567e87`
-  (→ migration_hygiene, `8480636`), `worktree-agent-a7ad91cff692319fa` (→ monorepo_tooling,
-  `a21fd78`), `worktree-agent-a90ad9c649c40894b` (→ deps_audit extension, `ee91e79`),
-  `worktree-agent-a9605c185393dc252` (→ ci_gates extension, `3cddf15`),
-  `worktree-agent-aa143791fd521cf95` (→ observability, `e5ed88c`),
-  `worktree-agent-aa7e609fbba76c134` (→ testquality extension, `6d215e2`),
-  `worktree-agent-ae44ff77f5ef05440` (→ notebook_quality, `e2d6e6c`),
-  `worktree-agent-aead037b5c4173398` (→ doc_quality/design_docs, `1b7f613`/`59fb16d`),
-  `worktree-agent-a3c9b9f38b56c2b25`/`worktree-agent-a435f394ecf0e53f2`/
-  `worktree-agent-a67506e510d5a7ffc` (all found to be pure ancestors of `dev` already — no unique
-  content, deleted by the other session before this run got to them).
-- `claude/quizzical-bun-c195e7` and `claude/sharp-meitner-c60833` — undocumented leftover branches
-  from the other session (tip = the `setup.sh`/README reformat commit, already on `dev`). Both fully
-  merged (ancestor-of-`dev`); this run deleted `quizzical-bun-c195e7` and its worktree.
-  `sharp-meitner-c60833` was already gone by the time this run checked.
-- All corresponding `.claude/worktrees/agent-*` directories for the above were removed this run
-  after confirming (`git merge-base --is-ancestor`) each tip is fully subsumed by `dev`.
-
-**Nothing left in the "empty backlog placeholder" table from prior versions of this file** — every
-row was either built-and-merged tonight, or confirmed as a pure duplicate of dev history and
-deleted. The backlog is NOT exhausted, though — see "Immediate next steps" below; there was simply
-no leftover *placeholder branch* still sitting empty.
-
-## AGENTS.md §2.2 human-sign-off gate — status
-
-- **api_contract's new external tool deps**: approved 2026-09-06. The collector as merged
-  (`f92e1c8`) is static-detection-only and added no new dependency, so the approved-but-unused
-  budget (an actual `oasdiff`/`buf breaking`/etc. integration) is still available if anyone wants to
-  build the live-execution version later — that would still need this same approval re-confirmed as
-  still applicable, not re-litigated from scratch.
+- No genuinely new sign-off-requiring need came up this run. The `ci_gates` fix's CSV-column removal
+  was caught and resolved (made additive) rather than requiring an ask — see the 4-round story above.
+- **`api_contract`'s approved-but-unused live-execution budget** (approved 2026-09-06, still
+  unused): unchanged, still available if anyone wants to build the live `oasdiff`/`buf breaking`
+  integration later.
 - **`affected.py`'s need to execute the target repo's own build**: still fully open, no branch
   exists, no decision made. If this comes up, stop and record it here rather than proceeding.
-- No new sign-off-requiring need came up this run beyond the two already tracked above.
+
+## Ground truth confirmed at the end of this run
+
+`dev` at `9221e9a`, working tree clean. `.venv/bin/ruff check src/ tests/` → exit 0.
+`.venv/bin/mypy src/` → exit 0, 224 source files. `.venv/bin/python3 -m pytest -q` →
+**1479 passed, 14 skipped, 2 xfailed** (run directly by this session, on the actual current tip, not
+copied from any self-report). The 2 xfails are both honestly-documented residual limitations (one in
+`license_compliance` from the prior spdx_match work, one new one in `ci_gates` from this run's own
+4-round fix) — not silent bugs.
+
+**Collector inventory** (for orientation, not exhaustive): 18 package-style collectors under
+`collectors/<name>/` (including this run's new `debt_markers`), 18 flat-file collectors still under
+`collectors/*.py` directly (including `ci_gates.py`, now 387 lines post-fix, and `testquality.py` at
+583 lines — both real file-size-convention debt, `testquality`'s already flagged above as a
+follow-up).
+
+**Environment note, still true**: always invoke pytest/ruff/mypy via `.venv/bin/python3 -m <tool>`,
+never a bare `python3 -m <tool>` in an unactivated shell (each Bash tool call is a fresh shell).
 
 ## Standing conventions (unchanged, must carry forward)
 
-- File-size cap ~80 lines/file (soft target — several merged collectors sit at 85-98 lines with no
-  issue; `spdx_match`'s 97+111-line split above is the kind of case that's still a real problem, not
-  because of the raw number but because it's covering up a correctness gap, not just verbosity).
+- File-size cap ~80 lines/file (soft target). `ci_gates.py` (387 lines) and `testquality.py`
+  (583 lines) are both real, tracked debt against this convention — not this run's to fully resolve,
+  but don't make either worse without at least a documented reason.
 - One collector = one `collectors/<name>/` package, `__init__.py` re-exports only the public API.
-- Split test packages need `_<name>_helpers.py` — never a generic `_helpers.py`.
-- Builder→verifier→merge, always, in a **fresh** worktree the verifier creates itself (never reusing
-  the builder's own worktree/venv, and — new lesson from tonight — never reusing *any* worktree of
-  unclear/stale provenance either, e.g. one left by a session that may have stalled mid-run).
-- CLI-wiring is explicitly **not** required for a collector to merge (`AGENTS.md` §9). Don't block a
-  mergeable collector on it — open a tracked follow-up instead. Everything merged tonight remains
-  unwired; that's fine and expected.
-- Concurrency is gated by review capacity: don't fan out more new builders than can be independently
-  verified in the same pass. Tonight's twist: also budget for the possibility that *another session
-  entirely* might be consuming review capacity you don't know about — check for live/recent activity
-  before assuming you have the full capacity budget to yourself.
+- Split test packages need `_<name>_helpers.py` — never a generic `_helpers.py`. (Note: this run
+  confirmed `AGENTS.md`'s own claim that "nothing under `tests/` has an `__init__.py` anywhere" is
+  now stale — at least 11 collectors' test packages have an empty `__init__.py`, an established
+  precedent, not a defect when found in a new PR.)
+- Builder→verifier→merge, always, in a **fresh** worktree the verifier creates itself. This run's
+  `ci_gates` saga is the clearest evidence yet for why: 4 rounds, each catching something the
+  previous round's fix introduced — skipping any single round would have shipped a real regression.
+- CLI-wiring is explicitly **not** required for a collector to merge (`AGENTS.md` §9).
+- A CSV column removal on an already-shipped collector is a **stop-and-flag** situation, not
+  something to route around — this run hit it once (`ci_gates`) and resolved it by making the fix
+  additive rather than either blocking indefinitely or silently breaking the format.
+- When a fix-for-a-fix starts oscillating between two failure modes (fix A causes B, fixing B risks
+  reintroducing A) — this run hit that with `ci_gates`'s quote-stripping regex, structurally
+  identical to the pre-existing `spdx_match.py` precedent — the correct move, established twice now,
+  is: stop patching the same heuristic-approach family, keep whichever fix has the less-bad failure
+  mode, and honestly document the residual limitation (xfail test + METHODOLOGY.md) rather than
+  attempt an open-ended Nth patch.
 - Only merge to `dev`. Never touch `main`, never force-push, never push to `origin`.
 - Attribution: commits end with `Co-Authored-By: Claude Sonnet 5 <noreply@anthropic.com>`.
 
 ## Immediate next steps for whoever/whatever picks this up
 
-1. **`spdx_match` needs a fundamentally different design**, not a fourth window/proximity patch —
-   see "Still blocked" above. Scope out per-license-section text splitting before dispatching a
-   builder. The existing branch is also now 27 commits stale; a fresh branch off current `dev` is
-   probably cleaner than rebasing the old one, given the algorithm needs to change anyway.
-2. **Independently re-verify the 9 items the other session merged tonight without any independent
-   verification** (`api_contract`, `notebook_quality`, `testquality` ext, `ci_gates` ext,
-   `observability`, `doc_quality`, `deps_audit` ext, `design_docs`, the `trivy` fix) — not urgent
-   (all self-reported clean, full suite is green including their tests), but per this repo's own
-   "never merge on self-report alone" rule, none of these have actually had that independent check
-   yet. Worth doing opportunistically when there's spare verification capacity and no new backlog
-   item competing for it.
-3. Re-scan `docs/checklist-by-repo-type/single-repo.md`'s remaining sections against what's now
-   built — most sections now have at least partial coverage, but "Codebase Structure & Internal
-   Modularity" (circular deps, layering/boundary enforcement, god-class detection, fan-in/fan-out —
-   partially covered by the pre-existing `depgraph.py`/`flag_debt`, not fully audited this run) and
-   "Compliance, Privacy & Accessibility" (GDPR/CCPA flows, a11y, audit logging — largely needs live
-   execution, likely a similar sign-off-gate situation as `affected.py`) haven't been checked
-   carefully. `polyrepo.md` and `monorepo.md` are in much better shape after tonight but not
-   audited section-by-section either. The full `docs/checklist-by-repo-type/` directory has ~24
-   files total; this project's scope per the scheduled task's own priority order only covers
-   single-repo/polyrepo/monorepo/pr-review/ai-knowledge-base/ml-data-science/agent-skills — the
-   backlog is **not** close to exhausted; do not consider disabling this scheduled task yet.
-4. Do not fan out more than 1-2 new builders per run unless verification capacity is confirmed
-   available — and confirm no other session is concurrently active first (see the top of this file).
-5. Rewrite this file with real, git-verified state at the end of every run.
+1. **Fix `testquality`'s Python/JS fuzz-detection honesty gap** (see "Still blocked" above for the
+   exact smallest-fix options) — this is the highest-priority item, since it's a live, shipped
+   "proxy for the property" violation on this repo's own highest-stakes, most-quoted collector.
+   Builder → fresh-worktree verifier → merge, as always.
+2. Independently re-verify the last 2 of the original 9: `deps_audit` extension, the `trivy` fix.
+3. Optional, lower priority: `testquality.py`'s package restructuring (583 lines) and wiring its 3
+   new signals into `deep_reports.py`/`per_repo_digest.py` (currently dead CSV-only output).
+4. Re-scan `docs/checklist-by-repo-type/single-repo.md`'s remaining sections. "Codebase Structure &
+   Internal Modularity" is now **fully covered** (confirmed this run by reading `codebase_modularity/
+   __init__.py`'s own docstring: circular deps + fan-in/fan-out via `depgraph.py`, feature-flag debt
+   via `flag_debt/`, size/god-class/layering via `codebase_modularity/` itself — nothing left in that
+   section). "Maintainability & Technical Debt"'s "Tech debt backlog size & age" row is now covered
+   by this run's new `debt_markers` collector. Remaining genuinely-uncovered single-repo rows are
+   mostly either live-execution-requiring (sign-off-gate territory, same situation as `affected.py`)
+   or thin single-metric items (e.g. "Onboarding time-to-first-commit") not yet worth a dedicated
+   collector — no large, well-scoped, keyless single-repo gap was found this run beyond what got
+   built. `polyrepo.md`/`monorepo.md` were not re-audited this run (time went to the verification
+   backlog instead) — worth a fresh look next run before assuming they're thin too.
+5. Do not fan out more than 1-2 new builders per run unless verification capacity is confirmed
+   available. This run's own experience: a single collector's fix cycle (`ci_gates`) consumed 4
+   builder+verifier round-trips on its own — budget accordingly, and don't assume every FAIL is a
+   quick one-round fix.
+6. Rewrite this file with real, git-verified state at the end of every run.
