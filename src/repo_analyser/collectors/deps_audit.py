@@ -48,12 +48,13 @@ from memory -- see this change's own report for the exact commands run):
   - `pip-licenses --format=json` (Python): reports human-readable PyPI
     trove-classifier text by default, NOT SPDX ids, for many common
     packages (confirmed live: `requests` -> "Apache Software License",
-    not "Apache-2.0"; `idna` -> "BSD-3-Clause", already exact) -- handled
-    via a small, explicit, conservative alias table (`PIP_LICENSE_ALIASES`)
-    covering only unambiguous cases; the classifier-only "BSD License"
-    string (doesn't distinguish 2- vs 3-clause) is deliberately left out
-    of the table, so it's flagged as a violation rather than silently
-    guessed which BSD variant it is.
+    not "Apache-2.0"; `idna` -> "BSD License", the bare ambiguous form)
+    -- handled via a small, explicit, conservative alias table
+    (`PIP_LICENSE_ALIASES`) covering only unambiguous cases; the
+    classifier-only "BSD License" string itself (confirmed live via
+    `idna`, which doesn't distinguish 2- vs 3-clause) is deliberately
+    left out of the table, so it's flagged as a violation rather than
+    silently guessed which BSD variant it is.
   - `go-licenses csv ./...` (Go): three columns, `name,license_url,
     license_name`, no header row, one row per library (per upstream
     github.com/google/go-licenses's report.go). UNVERIFIED live in this

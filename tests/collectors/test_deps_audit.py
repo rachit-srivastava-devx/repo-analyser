@@ -347,14 +347,20 @@ class TestPipLicensesPy:
     def test_classifier_text_normalized_via_alias_table(self, tmp_path: Path, monkeypatch) -> None:
         repo = tmp_path / "repo"
         repo.mkdir()
-        (repo / "requirements.txt").write_text("requests==2.0.0\nidna==3.0\nleft-pad==1.0\n")
+        (repo / "requirements.txt").write_text("requests==2.0.0\nsomepkg==1.0\nleft-pad==1.0\n")
         venv_bin = repo / ".venv" / "bin"
         venv_bin.mkdir(parents=True)
         (venv_bin / "pip-licenses").write_text("")
         # real shape confirmed live: pip-licenses --format=json output.
+        # `somepkg` here is a synthetic package, not real -- it exists only
+        # to test the "already an exact allow-listed SPDX id, no alias
+        # needed" pass-through path in isolation. It is NOT a claim about
+        # what any real package's pip-licenses output looks like; `idna`'s
+        # real output is "BSD License" (the bare, ambiguous form), covered
+        # by the `left-pad` row below instead.
         fake_output = json.dumps([
             {"License": "Apache Software License", "Name": "requests", "Version": "2.34.2"},
-            {"License": "BSD-3-Clause", "Name": "idna", "Version": "3.19"},
+            {"License": "BSD-3-Clause", "Name": "somepkg", "Version": "1.0"},
             {"License": "BSD License", "Name": "left-pad", "Version": "1.0"},
         ])
         monkeypatch.setattr(deps_audit, "run", lambda *a, **k: RunResult([], 0, fake_output, ""))
@@ -363,8 +369,8 @@ class TestPipLicensesPy:
         by_pkg = {f.package: f for f in findings}
         assert by_pkg["requests"].license == "Apache-2.0"  # aliased from classifier text
         assert by_pkg["requests"].license_violation is False
-        assert by_pkg["idna"].license == "BSD-3-Clause"  # already exact, no alias needed
-        assert by_pkg["idna"].license_violation is False
+        assert by_pkg["somepkg"].license == "BSD-3-Clause"  # already exact, no alias needed
+        assert by_pkg["somepkg"].license_violation is False
         # "BSD License" alone doesn't say 2- vs 3-clause -- deliberately
         # left unmapped, so it is flagged rather than silently guessed.
         assert by_pkg["left-pad"].license == "BSD License"
