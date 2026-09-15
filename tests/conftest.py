@@ -12,12 +12,21 @@ import pytest
 
 
 def _git(repo: Path, *args: str) -> None:
-    subprocess.run(
-        ["git", *args], cwd=repo, check=True, capture_output=True, text=True,
-        env={"GIT_AUTHOR_NAME": "Test Author", "GIT_AUTHOR_EMAIL": "test@example.com",
-             "GIT_COMMITTER_NAME": "Test Author", "GIT_COMMITTER_EMAIL": "test@example.com",
-             "PATH": "/usr/bin:/bin:/usr/local/bin:/opt/homebrew/bin"},
-    )
+    # PATH deliberately omits $HOME/points nowhere near it -- these fixture
+    # commits must stay hermetic regardless of a developer's global
+    # ~/.gitconfig (e.g. commit.gpgsign=true would otherwise make every
+    # fixture commit here hang/fail waiting on a GPG prompt). But a
+    # Homebrew-installed git must come BEFORE /usr/bin: macOS ships a git
+    # stub at /usr/bin/git that refuses to run at all until the Xcode CLT
+    # license is accepted ("git init" exits 69, "You have not agreed to
+    # the Xcode license agreements") -- a real incident (self-audit run,
+    # 2026-09-15) where a system-level license reset broke every git
+    # fixture in this file purely because of PATH order, nothing to do
+    # with this repo's own code. See docs/METHODOLOGY.md.
+    env = {"GIT_AUTHOR_NAME": "Test Author", "GIT_AUTHOR_EMAIL": "test@example.com",
+           "GIT_COMMITTER_NAME": "Test Author", "GIT_COMMITTER_EMAIL": "test@example.com",
+           "PATH": "/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin"}
+    subprocess.run(["git", *args], cwd=repo, check=True, capture_output=True, text=True, env=env)
 
 
 @pytest.fixture

@@ -21,10 +21,14 @@ from pathlib import Path
 
 import pytest
 
+# PATH order matters: Homebrew's real git must come before /usr/bin's Xcode
+# CLT stub, which refuses to run at all until the Xcode license is accepted
+# (exit 69) -- see tests/conftest.py's `_git()` for the full incident this
+# was copied from, and docs/METHODOLOGY.md item #42.
 _ENV = {
     "GIT_AUTHOR_NAME": "Test Author", "GIT_AUTHOR_EMAIL": "test@example.com",
     "GIT_COMMITTER_NAME": "Test Author", "GIT_COMMITTER_EMAIL": "test@example.com",
-    "PATH": "/usr/bin:/bin:/usr/local/bin:/opt/homebrew/bin",
+    "PATH": "/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin",
 }
 
 

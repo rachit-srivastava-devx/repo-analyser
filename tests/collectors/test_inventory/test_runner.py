@@ -14,7 +14,7 @@ class TestRunInventory:
             repo.mkdir()
             env = {"GIT_AUTHOR_NAME": "a", "GIT_AUTHOR_EMAIL": "a@x.com",
                    "GIT_COMMITTER_NAME": "a", "GIT_COMMITTER_EMAIL": "a@x.com",
-                   "PATH": "/usr/bin:/bin:/usr/local/bin:/opt/homebrew/bin"}
+                   "PATH": "/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin"}
             subprocess.run(["git", "init", "-q", "-b", "main"], cwd=repo, check=True,
                             capture_output=True, env=env)
             for i in range(n_commits):

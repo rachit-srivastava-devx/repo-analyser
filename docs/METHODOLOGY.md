@@ -1421,3 +1421,27 @@ own construction failures is less trustworthy than one that shows them.
     reproducibly slow/hanging network state (e.g. a blocked-egress or
     broken-credential-helper environment) that isn't available to automate
     here.
+42. **`tests/conftest.py`'s `git_repo`/`git_worktree`/`git_portfolio` fixtures
+    started failing wholesale (`git init` exiting 69) on a machine where the
+    full suite had been green hours earlier**, caught via this tool's own
+    self-audit (`testquality` module run against this repo) reporting 131
+    failed/47 errors that a direct `pytest` run moments before did not
+    reproduce. Root cause: `_git()`'s helper hardcodes a minimal `PATH`
+    (`/usr/bin:/bin:/usr/local/bin:/opt/homebrew/bin`) to keep fixture
+    commits hermetic against a developer's global git config -- but that
+    order puts macOS's own `/usr/bin/git` (an Xcode Command Line Tools stub)
+    ahead of Homebrew's real git. That stub refuses to run at all until the
+    Xcode CLT license is accepted (`git init` -> exit 69, "You have not
+    agreed to the Xcode license agreements"), and something on this machine
+    reset that acceptance between two runs the same day -- nothing to do
+    with this repo's own code. Confirmed directly: the identical command
+    with `/opt/homebrew/bin` first in `PATH` exits 0, no `sudo` needed. Fix:
+    reordered `_git()`'s `PATH` to put Homebrew first while still omitting
+    `$HOME` (the hermeticity `_git()` was actually trying to protect -- a
+    global `commit.gpgsign=true` would otherwise hang every fixture commit
+    waiting on a GPG prompt, an unrelated failure mode PATH order doesn't
+    touch). General lesson: a hardcoded `PATH` meant to pin *which binary*
+    a fixture uses can accidentally pin *whether it runs at all* if the
+    order doesn't match which of several same-named binaries on a given
+    machine is actually functional -- worth checking again if this ever
+    resurfaces on a machine with a different CLT/Homebrew layout.

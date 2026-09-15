@@ -35,7 +35,7 @@ class TestAnalyzeRepo:
                 ["git", *args], cwd=repo, check=True, capture_output=True, text=True,
                 env={"GIT_AUTHOR_NAME": author, "GIT_AUTHOR_EMAIL": f"{author}@example.com",
                      "GIT_COMMITTER_NAME": author, "GIT_COMMITTER_EMAIL": f"{author}@example.com",
-                     "PATH": "/usr/bin:/bin:/usr/local/bin:/opt/homebrew/bin"},
+                     "PATH": "/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin"},
             )
 
         repo = tmp_path / "multi_author"

@@ -11,6 +11,7 @@ requires-python = ">=3.10"
 dependencies = [
     "pydriller>=2.10",
     "lizard>=1.24",
+    "defusedxml>=0.7.1",
     "pyyaml>=6.0",
     "matplotlib>=3.8",
     "networkx>=3.0",

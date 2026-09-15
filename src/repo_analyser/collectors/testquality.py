@@ -28,10 +28,11 @@ import json
 import re
 import subprocess
 import tempfile
-import xml.etree.ElementTree as ET
 from dataclasses import asdict, dataclass, replace
 from pathlib import Path
 from typing import TypedDict
+
+import defusedxml.ElementTree as ET
 
 from ..core.lang import (
     EXCLUDE_DIR_PARTS,
@@ -172,8 +173,15 @@ def analyze_repo(repo: Path, timeout: int = 180, log_dir: Path | None = None) ->
 # `--junit-xml`, which reports `errors`/`failures`/`tests`/`skipped` as
 # actual XML attributes -- the exact distinction the collection-error regex
 # existed to reconstruct by pattern-matching prose, given for free. Parsed
-# below with stdlib `xml.etree.ElementTree`; no new dependency needed for a
-# schema this simple.
+# below with `defusedxml.ElementTree` (drop-in `parse()` for stdlib's
+# `xml.etree.ElementTree`, XXE-hardened) rather than the stdlib module --
+# semgrep correctly flagged the stdlib module here: this junit.xml is
+# pytest's own output, but pytest is running the TARGET REPO's test suite,
+# and this tool's whole security model (see README) treats target-repo
+# content as untrusted. A crafted test name/docstring surviving into the
+# report unescaped by a pytest XML-escaping bug is a thin, indirect vector,
+# but the fix costs nothing (defusedxml has no transitive deps and needs no
+# network/credential) so there's no reason to accept even a remote risk.
 
 
 def _pytest_command(repo: Path) -> list[str]:

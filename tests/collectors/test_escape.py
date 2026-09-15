@@ -12,7 +12,7 @@ def _git(repo: Path, *args: str) -> None:
         ["git", *args], cwd=repo, check=True, capture_output=True, text=True,
         env={"GIT_AUTHOR_NAME": "Dev", "GIT_AUTHOR_EMAIL": "dev@example.com",
              "GIT_COMMITTER_NAME": "Dev", "GIT_COMMITTER_EMAIL": "dev@example.com",
-             "PATH": "/usr/bin:/bin:/usr/local/bin:/opt/homebrew/bin"},
+             "PATH": "/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin"},
     )
 
 

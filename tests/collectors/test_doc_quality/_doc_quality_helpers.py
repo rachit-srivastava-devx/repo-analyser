@@ -16,7 +16,7 @@ from pathlib import Path
 BASE_ENV = {
     "GIT_AUTHOR_NAME": "Test Author", "GIT_AUTHOR_EMAIL": "test@example.com",
     "GIT_COMMITTER_NAME": "Test Author", "GIT_COMMITTER_EMAIL": "test@example.com",
-    "PATH": "/usr/bin:/bin:/usr/local/bin:/opt/homebrew/bin",
+    "PATH": "/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin",
 }
 
 # Same convention as tests/collectors/test_mutation.py's HAS_MUTMUT: interrogate
